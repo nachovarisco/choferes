@@ -17,6 +17,7 @@ import {
   Truck,
   Users,
   Wrench,
+  Wallet,
 } from "lucide-react";
 
 export default function AppShell({
@@ -37,6 +38,7 @@ export default function AppShell({
     { name: "Documentos", href: "/documentos", icon: FileText },
     { name: "Incidencias", href: "/alertas", icon: AlertTriangle },
     { name: "Reportes", href: "/reportes", icon: BarChart3 },
+    { name: "Caja", href: "/caja", icon: Wallet },
     { name: "Mantenimiento", href: "/mantenimiento", icon: Wrench },
     { name: "Configuración", href: "/configuracion", icon: Settings },
   ];

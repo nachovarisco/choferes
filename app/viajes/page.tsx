@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, Plus, Search, X } from "lucide-react";
 
 export default function ViajesPage() {
@@ -59,9 +60,11 @@ export default function ViajesPage() {
             <tbody className="divide-y divide-slate-100">
               <TravelRow
                 id="VJ-000124"
+                mainClient="Easy"
                 stops="Easy + Dhinox · 2 paradas"
                 route="Paraná → Buenos Aires"
                 driver="Juan Pérez"
+                driverSlug="juan-perez"
                 unit="AB123CD"
                 status="En viaje"
                 alert="Easy requiere turno"
@@ -69,9 +72,11 @@ export default function ViajesPage() {
 
               <TravelRow
                 id="VJ-000125"
+                mainClient="Cencosud"
                 stops="Cencosud · 1 parada"
                 route="Rosario → Córdoba"
                 driver="Luis Gómez"
+                driverSlug="luis-gomez"
                 unit="AC456EF"
                 status="En carga"
                 alert="Documentación pendiente"
@@ -79,9 +84,11 @@ export default function ViajesPage() {
 
               <TravelRow
                 id="VJ-000126"
+                mainClient="Dhinox"
                 stops="Dhinox + Julicroc + Lafedar · 3 paradas"
                 route="Santa Fe → Mendoza"
                 driver="Carlos Díaz"
+                driverSlug="carlos-diaz"
                 unit="AD789GH"
                 status="Asignado"
                 alert="Sin alertas"
@@ -357,7 +364,17 @@ function MiniCard({ title, value, danger = false }: any) {
   );
 }
 
-function TravelRow({ id, stops, route, driver, unit, status, alert }: any) {
+function TravelRow({
+  id,
+  mainClient,
+  stops,
+  route,
+  driver,
+  driverSlug,
+  unit,
+  status,
+  alert,
+}: any) {
   const statusColor =
     status === "Demorado"
       ? "bg-red-100 text-red-700"
@@ -374,18 +391,51 @@ function TravelRow({ id, stops, route, driver, unit, status, alert }: any) {
       ? "bg-emerald-100 text-emerald-700"
       : "bg-amber-100 text-amber-700";
 
+  const clientSlug = mainClient.toLowerCase();
+
   return (
     <tr className="hover:bg-slate-50">
-      <td className="p-4 font-medium text-slate-900">{id}</td>
-      <td className="p-4">{stops}</td>
+      <td className="p-4 font-medium text-slate-900">
+        <Link href={`/viajes/${id.toLowerCase()}`} className="hover:underline">
+          {id}
+        </Link>
+      </td>
+
+      <td className="p-4">
+        <Link
+          href={`/clientes/${clientSlug}`}
+          className="text-blue-600 hover:underline font-medium"
+        >
+          {stops}
+        </Link>
+      </td>
+
       <td className="p-4">{route}</td>
-      <td className="p-4">{driver}</td>
-      <td className="p-4">{unit}</td>
+
+      <td className="p-4">
+        <Link
+          href={`/choferes/${driverSlug}`}
+          className="text-blue-600 hover:underline font-medium"
+        >
+          {driver}
+        </Link>
+      </td>
+
+      <td className="p-4">
+        <Link
+          href={`/unidades/${unit.toLowerCase()}`}
+          className="text-blue-600 hover:underline font-medium"
+        >
+          {unit}
+        </Link>
+      </td>
+
       <td className="p-4">
         <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColor}`}>
           {status}
         </span>
       </td>
+
       <td className="p-4">
         <span className={`px-3 py-1 rounded-full text-xs font-medium ${alertColor}`}>
           {alert}
