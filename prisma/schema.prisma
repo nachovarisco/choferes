@@ -80,8 +80,21 @@ model Client {
   tripClients    TripClient[]
   stops          TripStop[]
   orders         LoadOrder[]
+  histories      ClientHistory[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+}
+
+model ClientHistory {
+  id        String   @id @default(cuid())
+  event     String
+  detail    String
+  snapshot  String   @default("{}")
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([clientId, createdAt])
 }
 
 model Trip {
@@ -122,6 +135,12 @@ model TripClient {
 model TripStop {
   id         String   @id @default(cuid())
   number     Int
+  clientCode String   @default("")
+  clientName String   @default("")
+  contact    String   @default("")
+  reception  String   @default("")
+  requiresTurn Boolean @default(false)
+  turnStatus String   @default("No requiere turno")
   address    String
   goods      String
   status     String

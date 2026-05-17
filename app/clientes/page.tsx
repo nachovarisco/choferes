@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, Building2, CheckCircle2, Clock, FileText } from "lucide-react";
 import { Field, ModalActions, ModalFrame, SearchBox, SelectField, TextArea } from "@/components/controls";
 import { Badge, Button, Card, PageHeader, StatCard } from "@/components/ui";
@@ -10,8 +11,11 @@ import { useLiveData } from "@/components/use-live-data";
 import type { Client } from "@/lib/data";
 
 export default function ClientesPage() {
+  const searchParams = useSearchParams();
+  const initialNewClient = searchParams.get("nuevo") === "1";
+  const initialCode = searchParams.get("codigo") ?? "";
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialNewClient);
   const { clients } = useLiveData();
 
   const normalized = query.trim().toLowerCase();
@@ -54,12 +58,12 @@ export default function ClientesPage() {
         ))}
       </section>
 
-      {open ? <NewClientModal onClose={() => setOpen(false)} /> : null}
+      {open ? <NewClientModal defaultCode={initialCode} onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
 
-function NewClientModal({ onClose }: { onClose: () => void }) {
+function NewClientModal({ defaultCode, onClose }: { defaultCode?: string; onClose: () => void }) {
   return (
     <ModalFrame
       title="Nuevo cliente"
@@ -71,7 +75,7 @@ function NewClientModal({ onClose }: { onClose: () => void }) {
       <form id="new-client-form" action={createClientAction} className="space-y-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field name="name" label="Razón social / nombre" placeholder="Ej: Cliente SA" required />
-          <Field name="code" label="Código de cliente" placeholder="Ej: CLI-0006 o 6" />
+          <Field name="code" label="Código de cliente" placeholder="Ej: CLI-0006 o 6" defaultValue={defaultCode} />
           <Field name="contact" label="Contacto operativo" placeholder="Ej: Logística Regional" required />
           <Field name="phone" label="Teléfono" placeholder="Ej: 11 5555-0000" required />
           <Field name="reception" label="Horario de recepción" placeholder="Ej: 08:00 a 16:00" required />

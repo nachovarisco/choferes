@@ -67,9 +67,22 @@ export type Client = {
   openIncidents: number;
 };
 
+export type ClientHistory = {
+  id: string;
+  event: string;
+  detail: string;
+  date: string;
+};
+
 export type TripStop = {
   number: number;
   clientSlug: string;
+  clientCode?: string;
+  clientName?: string;
+  contact?: string;
+  reception?: string;
+  requiresTurn?: boolean;
+  turnStatus?: string;
   address: string;
   goods: string;
   status: "Pendiente" | "En camino" | "Entregado" | "No disponible";

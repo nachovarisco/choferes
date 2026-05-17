@@ -51,6 +51,41 @@ async function generateClientCode() {
   return code;
 }
 
+function clientHistorySnapshot(data: Record<string, unknown>) {
+  return JSON.stringify({
+    code: data.code,
+    name: data.name,
+    contact: data.contact,
+    phone: data.phone,
+    reception: data.reception,
+    status: data.status,
+    requiresTurn: data.requiresTurn,
+    tags: data.tags,
+    requirements: data.requirements,
+  });
+}
+
+async function recordClientHistory({
+  clientId,
+  detail,
+  event,
+  snapshot,
+}: {
+  clientId: string;
+  detail: string;
+  event: string;
+  snapshot: Record<string, unknown>;
+}) {
+  await prisma.clientHistory.create({
+    data: {
+      clientId,
+      event,
+      detail,
+      snapshot: clientHistorySnapshot(snapshot),
+    },
+  });
+}
+
 function getAllStringValues(formData: FormData, name: string) {
   return formData.getAll(name).map((value) => String(value).trim());
 }
@@ -127,7 +162,7 @@ export async function createClientAction(formData: FormData) {
 
   const slug = slugify(parsed.name);
   const code = normalizeClientCode(parsed.code ?? "") || await generateClientCode();
-  const requiresTurn = parsed.requiresTurn === "Sí";
+  const requiresTurn = toBoolean(parsed.requiresTurn);
   const clientData = {
     code,
     slug,
@@ -154,17 +189,31 @@ export async function createClientAction(formData: FormData) {
   });
 
   if (existing) {
-    await prisma.client.update({
+    const client = await prisma.client.update({
       where: { id: existing.id },
       data: clientData,
     });
+
+    await recordClientHistory({
+      clientId: client.id,
+      event: "Ficha actualizada",
+      detail: `Se actualizo la ficha operativa de ${client.name}.`,
+      snapshot: clientData,
+    });
   } else {
-    await prisma.client.create({
+    const client = await prisma.client.create({
       data: {
         id: slug,
         ...clientData,
         delayAverage: "0m",
       },
+    });
+
+    await recordClientHistory({
+      clientId: client.id,
+      event: "Alta de cliente",
+      detail: `Se creo el cliente ${client.code} desde Clientes.`,
+      snapshot: clientData,
     });
   }
 
@@ -508,12 +557,6 @@ const tripSchema = z.object({
 async function resolveTripClient(formData: FormData, index: number) {
   const existingSlug = getAllStringValues(formData, "stopClientSlug")[index];
   const requestedCode = normalizeClientCode(getAllStringValues(formData, "stopClientCode")[index] ?? "");
-  const newName = getAllStringValues(formData, "stopNewClientName")[index];
-  const newContact = getAllStringValues(formData, "stopNewClientContact")[index];
-  const newPhone = getAllStringValues(formData, "stopNewClientPhone")[index];
-  const newReception = getAllStringValues(formData, "stopNewClientReception")[index];
-  const newRequiresTurn = getAllStringValues(formData, "stopNewClientRequiresTurn")[index];
-  const newNotes = getAllStringValues(formData, "stopNewClientNotes")[index];
 
   if (existingSlug) {
     const existing = await prisma.client.findFirst({
@@ -538,50 +581,7 @@ async function resolveTripClient(formData: FormData, index: number) {
     }
   }
 
-  if (!newName) {
-    return null;
-  }
-
-  const slug = slugify(newName);
-  const code = requestedCode || await generateClientCode();
-  const requiresTurn = newRequiresTurn === "Sí";
-  const existing = await prisma.client.findFirst({
-    where: {
-      OR: [
-        { slug },
-        { code },
-      ],
-    },
-  });
-  const data = {
-    code,
-    slug,
-    name: newName,
-    contact: newContact || "Contacto a confirmar",
-    phone: newPhone || "Sin teléfono",
-    reception: newReception || "A confirmar",
-    tripsThisMonth: 0,
-    status: requiresTurn ? "Requiere turno" : "Alta rápida",
-    requiresTurn,
-    tags: JSON.stringify(newNotes ? [newNotes] : ["Alta desde viaje"]),
-    requirements: JSON.stringify(["Remito", "Seguro unidad"]),
-    delayAverage: "0m",
-    openIncidents: 0,
-  };
-
-  if (existing) {
-    return prisma.client.update({
-      where: { id: existing.id },
-      data,
-    });
-  }
-
-  return prisma.client.create({
-    data: {
-      id: slug,
-      ...data,
-    },
-  });
+  return null;
 }
 
 export async function createTripAction(formData: FormData) {
@@ -602,24 +602,27 @@ export async function createTripAction(formData: FormData) {
     : null;
 
   const stopClientSlugs = getAllStringValues(formData, "stopClientSlug");
+  const stopClientCodes = getAllStringValues(formData, "stopClientCode");
   const stopAddresses = getAllStringValues(formData, "stopAddress");
   const stopGoods = getAllStringValues(formData, "stopGoods");
   const stopNotes = getAllStringValues(formData, "stopNote");
+  const stopContacts = getAllStringValues(formData, "stopContact");
+  const stopReceptions = getAllStringValues(formData, "stopReception");
+  const stopRequiresTurns = getAllStringValues(formData, "stopRequiresTurn");
+  const stopTurnStatuses = getAllStringValues(formData, "stopTurnStatus");
+  const stopInitialStatuses = getAllStringValues(formData, "stopInitialStatus");
+  const stopCount = Math.max(stopClientCodes.length, stopClientSlugs.length, stopAddresses.length, stopGoods.length, 1);
   const resolvedClients = await Promise.all(
-    stopClientSlugs.map((_, index) => resolveTripClient(formData, index)),
+    Array.from({ length: stopCount }, (_, index) => resolveTripClient(formData, index)),
   );
-  const resolvedClientIds = resolvedClients
-    .map((client) => client?.id)
-    .filter((clientId): clientId is string => Boolean(clientId));
-  const uniqueClientIds = Array.from(new Set(resolvedClientIds.length > 0 ? resolvedClientIds : order ? [order.clientId] : []));
+  const stopClients = resolvedClients.map((client) => client ?? order?.client ?? null);
+  const readyStopClients = stopClients.filter((client): client is NonNullable<typeof client> => Boolean(client));
 
-  if (uniqueClientIds.length === 0) {
-    throw new Error("El viaje necesita al menos un cliente.");
+  if (readyStopClients.length !== stopCount) {
+    throw new Error("Uno o mas clientes no existen. Cargalos primero desde Clientes y despues usa su codigo en el viaje.");
   }
 
-  if (resolvedClientIds.length !== stopClientSlugs.length && !order) {
-    throw new Error("Uno o más clientes no existen.");
-  }
+  const uniqueClientIds = Array.from(new Set(readyStopClients.map((client) => client.id)));
 
   const driver = parsed.driverSlug && parsed.driverSlug !== "sin-asignar"
     ? await prisma.driver.findUnique({ where: { slug: parsed.driverSlug } })
@@ -652,15 +655,29 @@ export async function createTripAction(formData: FormData) {
         })),
       },
       stops: {
-        create: stopClientSlugs.map((_, index) => ({
-          number: index + 1,
-          client: { connect: { id: resolvedClientIds[index] ?? order?.clientId } },
-          address: stopAddresses[index] || parsed.destination,
-          goods: stopGoods[index] || order?.load || "Carga general",
-          status: "Pendiente",
-          note: stopNotes[index] || "Sin observaciones",
-          delivered: false,
-        })),
+        create: readyStopClients.map((client, index) => {
+          const contact = stopContacts[index] || `${client.contact} · ${client.phone}`;
+          const reception = stopReceptions[index] || client.reception;
+          const turnStatus = stopTurnStatuses[index] || (client.requiresTurn ? "Requiere pedir turno" : "No requiere turno");
+          const requiresTurn = client.requiresTurn || toBoolean(stopRequiresTurns[index] ?? "") || turnStatus !== "No requiere turno";
+
+          return {
+            number: index + 1,
+            client: { connect: { id: client.id } },
+            clientCode: client.code,
+            clientName: client.name,
+            contact,
+            reception,
+            requiresTurn,
+            turnStatus,
+            address: stopAddresses[index] || parsed.destination,
+            goods: stopGoods[index] || order?.load || "Carga general",
+            status: stopInitialStatuses[index] || "Pendiente",
+            note: stopNotes[index] || "Sin observaciones",
+            alert: requiresTurn ? turnStatus : undefined,
+            delivered: false,
+          };
+        }),
       },
       timeline: {
         create: [
@@ -674,6 +691,29 @@ export async function createTripAction(formData: FormData) {
       },
     },
   });
+
+  await Promise.all(
+    uniqueClientIds.map((clientId) => {
+      const client = readyStopClients.find((item) => item.id === clientId);
+
+      return recordClientHistory({
+        clientId,
+        event: "Viaje asociado",
+        detail: `${code} · ${parsed.origin} a ${parsed.destination}`,
+        snapshot: {
+          code: client?.code,
+          name: client?.name,
+          contact: client?.contact,
+          phone: client?.phone,
+          reception: client?.reception,
+          status: client?.status,
+          requiresTurn: client?.requiresTurn,
+          tripCode: code,
+          tripDate: parsed.date,
+        },
+      });
+    }),
+  );
 
   if (order) {
     await prisma.loadOrder.update({
@@ -1018,13 +1058,22 @@ async function findOrCreateImportClient(row: ImportRow) {
   };
 
   if (existing) {
-    return prisma.client.update({
+    const client = await prisma.client.update({
       where: { id: existing.id },
       data,
     });
+
+    await recordClientHistory({
+      clientId: client.id,
+      event: "Importacion de clientes",
+      detail: `Se actualizo ${client.code} desde archivo.`,
+      snapshot: data,
+    });
+
+    return client;
   }
 
-  return prisma.client.create({
+  const client = await prisma.client.create({
     data: {
       id: slug,
       ...data,
@@ -1033,6 +1082,15 @@ async function findOrCreateImportClient(row: ImportRow) {
       tripsThisMonth: Number(pick(row, ["viajes", "viajes mes", "viajes este mes"]) || 0),
     },
   });
+
+  await recordClientHistory({
+    clientId: client.id,
+    event: "Importacion de clientes",
+    detail: `Se creo ${client.code} desde archivo.`,
+    snapshot: data,
+  });
+
+  return client;
 }
 
 async function importClients(rows: ImportRow[]) {
@@ -1225,7 +1283,7 @@ export async function importOperationsAction(formData: FormData) {
     sheets[csvEntity] = parseDelimitedRows(text);
   } else {
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer as unknown as Buffer);
+    await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
     workbook.eachSheet((sheet) => {
       sheets[sheet.name] = rowsFromWorksheet(sheet);
     });

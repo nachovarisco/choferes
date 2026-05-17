@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, Building2, CheckCircle2, Clock, Phone, User } from "lucide-react";
+import { AlertTriangle, Building2, CalendarClock, CheckCircle2, Clock, Phone, User } from "lucide-react";
 import { Badge, DataTable, PageHeader, Panel, StatCard } from "@/components/ui";
 import { statusTone, tripRoute } from "@/lib/data";
-import { getLiveData } from "@/lib/queries";
+import { getClientHistoryBySlug, getLiveData } from "@/lib/queries";
 
 export default async function ClienteDetallePage({
   params,
@@ -19,6 +19,7 @@ export default async function ClienteDetallePage({
   }
 
   const clientTrips = data.trips.filter((trip) => trip.clientSlugs.includes(client.slug));
+  const history = await getClientHistoryBySlug(client.slug);
   const findDriver = (slug: string) => data.drivers.find((driver) => driver.slug === slug);
   const findUnit = (unitId: string) => data.units.find((unit) => unit.id === unitId);
 
@@ -85,6 +86,25 @@ export default async function ClienteDetallePage({
           <Metric label="Viajes este mes" value={String(client.tripsThisMonth)} />
           <Metric label="Demora promedio" value={client.delayAverage} />
           <Metric label="Incidencias abiertas" value={String(client.openIncidents)} danger={client.openIncidents > 0} />
+        </Panel>
+      </section>
+
+      <section className="mt-6">
+        <Panel title="Historial del cliente">
+          {history.length > 0 ? (
+            history.map((item) => (
+              <div key={item.id} className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <CalendarClock size={18} className="mt-0.5 shrink-0 text-slate-500" />
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">{item.event}</p>
+                  <p className="text-sm text-slate-600">{item.detail}</p>
+                  <p className="mt-1 text-xs text-slate-500">{item.date}</p>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-500">Todavía no hay movimientos historicos para este cliente.</p>
+          )}
         </Panel>
       </section>
 

@@ -1,11 +1,11 @@
--- CreateTable
+﻿-- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
     "role" TEXT NOT NULL DEFAULT 'ADMIN',
-    "branch" TEXT NOT NULL DEFAULT 'Paran�',
+    "branch" TEXT NOT NULL DEFAULT 'Paraná',
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
 );
@@ -70,6 +70,17 @@ CREATE TABLE "Client" (
 );
 
 -- CreateTable
+CREATE TABLE "ClientHistory" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "event" TEXT NOT NULL,
+    "detail" TEXT NOT NULL,
+    "snapshot" TEXT NOT NULL DEFAULT '{}',
+    "clientId" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ClientHistory_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
 CREATE TABLE "Trip" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "code" TEXT NOT NULL,
@@ -105,6 +116,12 @@ CREATE TABLE "TripClient" (
 CREATE TABLE "TripStop" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "number" INTEGER NOT NULL,
+    "clientCode" TEXT NOT NULL DEFAULT '',
+    "clientName" TEXT NOT NULL DEFAULT '',
+    "contact" TEXT NOT NULL DEFAULT '',
+    "reception" TEXT NOT NULL DEFAULT '',
+    "requiresTurn" BOOLEAN NOT NULL DEFAULT false,
+    "turnStatus" TEXT NOT NULL DEFAULT 'No requiere turno',
     "address" TEXT NOT NULL,
     "goods" TEXT NOT NULL,
     "status" TEXT NOT NULL,
@@ -228,6 +245,9 @@ CREATE UNIQUE INDEX "Client_code_key" ON "Client"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Client_slug_key" ON "Client"("slug");
+
+-- CreateIndex
+CREATE INDEX "ClientHistory_clientId_createdAt_idx" ON "ClientHistory"("clientId", "createdAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Trip_code_key" ON "Trip"("code");

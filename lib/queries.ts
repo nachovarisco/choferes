@@ -12,6 +12,7 @@ import type {
   Trip,
   TripStop,
   Unit,
+  ClientHistory,
 } from "@/lib/data";
 
 function readJsonArray(value: string | null | undefined) {
@@ -116,6 +117,12 @@ function toTrip(trip: TripWithRelations): Trip {
   const stops: TripStop[] = trip.stops.map((stop) => ({
     number: stop.number,
     clientSlug: stop.client.slug,
+    clientCode: stop.clientCode || stop.client.code,
+    clientName: stop.clientName || stop.client.name,
+    contact: stop.contact || `${stop.client.contact} · ${stop.client.phone}`,
+    reception: stop.reception || stop.client.reception,
+    requiresTurn: stop.requiresTurn || stop.client.requiresTurn,
+    turnStatus: stop.turnStatus || (stop.client.requiresTurn ? "Requiere pedir turno" : "No requiere turno"),
     address: stop.address,
     goods: stop.goods,
     status: stop.status as TripStop["status"],
@@ -320,6 +327,33 @@ export async function getUnitById(id: string) {
 export async function getClientBySlug(slug: string) {
   const data = await getLiveData();
   return data.clients.find((client) => client.slug === slug.toLowerCase());
+}
+
+export async function getClientHistoryBySlug(slug: string): Promise<ClientHistory[]> {
+  try {
+    const client = await prisma.client.findFirst({
+      where: { slug: slug.toLowerCase() },
+      include: {
+        histories: {
+          orderBy: { createdAt: "desc" },
+          take: 30,
+        },
+      },
+    });
+
+    if (!client) {
+      return [];
+    }
+
+    return client.histories.map((item) => ({
+      id: item.id,
+      event: item.event,
+      detail: item.detail,
+      date: formatDate(item.createdAt),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function getIncidentById(id: string) {

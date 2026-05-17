@@ -88,8 +88,10 @@ export default async function ClientesDelViajePage({
                 getKey={(stop) => `${client.slug}-${stop.number}`}
                 columns={[
                   { header: "Parada", cell: (stop) => `#${stop.number}` },
+                  { header: "Código", cell: (stop) => stop.clientCode ?? client.code },
                   { header: "Dirección", cell: (stop) => stop.address },
                   { header: "Mercadería", cell: (stop) => <StopGoods stop={stop} /> },
+                  { header: "Turno", cell: (stop) => <Badge tone={stop.requiresTurn ? "amber" : "green"}>{stop.turnStatus ?? "No requiere turno"}</Badge> },
                   {
                     header: "Estado",
                     cell: (stop) => <Badge tone={stop.delivered ? "green" : stop.alert ? "amber" : "blue"}>{stop.status}</Badge>,

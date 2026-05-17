@@ -179,14 +179,22 @@ function StopCard({ client, stop, tripSlug }: { client?: Client; stop: TripStop;
 
           <div>
             <Link href={`/clientes/${client?.slug ?? stop.clientSlug}`} className="font-semibold text-blue-600 hover:underline">
-              {client?.name ?? stop.clientSlug}
+              {stop.clientName ?? client?.name ?? stop.clientSlug}
             </Link>
-            <p className="mt-1 text-sm text-slate-500">{stop.address}</p>
+            <p className="mt-1 text-sm text-slate-500">{stop.clientCode ?? client?.code} · {stop.address}</p>
 
             <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-600">
               <span className="inline-flex items-center gap-2">
                 <Package size={16} />
                 {stop.goods}
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <User size={16} />
+                {stop.contact ?? client?.contact ?? "Contacto a confirmar"}
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <Clock size={16} />
+                {stop.reception ?? client?.reception ?? "Recepcion a confirmar"}
               </span>
               <span className="inline-flex items-center gap-2">
                 <FileText size={16} />
@@ -198,6 +206,7 @@ function StopCard({ client, stop, tripSlug }: { client?: Client; stop: TripStop;
 
         <div className="flex flex-col items-start gap-2 lg:items-end">
           <Badge tone={stop.delivered ? "green" : "blue"}>{stop.status}</Badge>
+          <Badge tone={stop.requiresTurn ? "amber" : "green"}>{stop.turnStatus ?? (stop.requiresTurn ? "Requiere turno" : "No requiere turno")}</Badge>
           {stop.alert ? <Badge tone="amber">{stop.alert}</Badge> : null}
           {!stop.delivered ? (
             <div className="flex flex-wrap justify-start gap-2 lg:justify-end">

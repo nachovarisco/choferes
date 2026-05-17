@@ -33,6 +33,7 @@ async function main() {
   await prisma.tripClient.deleteMany();
   await prisma.trip.deleteMany();
   await prisma.loadOrder.deleteMany();
+  await prisma.clientHistory.deleteMany();
   await prisma.driver.deleteMany();
   await prisma.unit.deleteMany();
   await prisma.client.deleteMany();
@@ -106,6 +107,23 @@ async function main() {
         requirements: json(client.requirements),
         delayAverage: client.delayAverage,
         openIncidents: client.openIncidents,
+        histories: {
+          create: {
+            event: "Estado inicial",
+            detail: `Cliente ${client.code} cargado en la base inicial.`,
+            snapshot: json({
+              code: client.code,
+              name: client.name,
+              contact: client.contact,
+              phone: client.phone,
+              reception: client.reception,
+              status: client.status,
+              requiresTurn: client.requiresTurn,
+              tags: client.tags,
+              requirements: client.requirements,
+            }),
+          },
+        },
       },
     });
   }
@@ -134,6 +152,12 @@ async function main() {
         stops: {
           create: trip.stops.map((stop) => ({
             number: stop.number,
+            clientCode: clients.find((client) => client.slug === stop.clientSlug)?.code ?? "",
+            clientName: clients.find((client) => client.slug === stop.clientSlug)?.name ?? stop.clientSlug,
+            contact: clients.find((client) => client.slug === stop.clientSlug)?.contact ?? "",
+            reception: clients.find((client) => client.slug === stop.clientSlug)?.reception ?? "",
+            requiresTurn: clients.find((client) => client.slug === stop.clientSlug)?.requiresTurn ?? false,
+            turnStatus: clients.find((client) => client.slug === stop.clientSlug)?.requiresTurn ? "Requiere pedir turno" : "No requiere turno",
             address: stop.address,
             goods: stop.goods,
             status: stop.status,

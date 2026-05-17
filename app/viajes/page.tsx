@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, ClipboardList, FileText, Plus, Truck } from "lucide-react";
-import { CheckOption, Field, ModalActions, ModalFrame, SearchBox, SelectField, TextArea } from "@/components/controls";
+import { Field, ModalActions, ModalFrame, SearchBox, SelectField, TextArea } from "@/components/controls";
 import { Badge, Button, DataTable, PageHeader, StatCard } from "@/components/ui";
 import { createTripAction } from "@/app/actions";
 import { useLiveData } from "@/components/use-live-data";
@@ -327,6 +327,8 @@ function StopCard({
     return normalizedClientCode === normalizedCode || client.slug === clientCode.trim().toLowerCase();
   });
   const listId = `client-code-list-${number}`;
+  const createClientHref = `/clientes?nuevo=1&codigo=${encodeURIComponent(normalizedCode || clientCode.trim())}`;
+  const turnDefault = selectedClient?.requiresTurn ? "Requiere pedir turno" : "No requiere turno";
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5">
@@ -343,6 +345,7 @@ function StopCard({
       </div>
 
       <input type="hidden" name="stopClientSlug" value={selectedClient?.slug ?? ""} />
+      <input type="hidden" name="stopRequiresTurn" value={selectedClient?.requiresTurn ? "Si" : "No"} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <label className="block">
@@ -365,15 +368,21 @@ function StopCard({
           </datalist>
         </label>
         <Field name="stopAddress" label="Dirección / destino" placeholder="Ej: Av. Siempre Viva 123" required />
-        <Field key={`contact-${selectedClient?.code ?? "new"}`} label="Contacto en destino" placeholder="Nombre / teléfono" defaultValue={selectedClient ? `${selectedClient.contact} · ${selectedClient.phone}` : ""} />
-        <SelectField label="Estado inicial de parada" options={["Pendiente", "En camino", "Entregado", "No disponible", "Devolución"]} />
+        <Field key={`contact-${selectedClient?.code ?? "new"}`} name="stopContact" label="Contacto en destino" placeholder="Nombre / teléfono" defaultValue={selectedClient ? `${selectedClient.contact} · ${selectedClient.phone}` : ""} />
+        <SelectField name="stopInitialStatus" label="Estado inicial de parada" options={["Pendiente", "En camino", "Entregado", "No disponible"]} />
         <Field name="stopGoods" label="Mercadería" placeholder="Ej: 12 aberturas / 4 pallets / remitos" defaultValue={defaultGoods} required />
-        <Field key={`reception-${selectedClient?.code ?? "new"}`} label="Horario / turno" placeholder="Ej: Turno 14:30" defaultValue={selectedClient?.reception ?? ""} />
+        <Field key={`reception-${selectedClient?.code ?? "new"}`} name="stopReception" label="Horario / turno" placeholder="Ej: Turno 14:30" defaultValue={selectedClient?.reception ?? ""} />
+        <SelectField
+          key={`turn-${selectedClient?.code ?? "new"}`}
+          name="stopTurnStatus"
+          label="Control de turno"
+          defaultValue={turnDefault}
+          options={["No requiere turno", "Requiere pedir turno", "Turno ya solicitado"]}
+        />
       </div>
 
       {selectedClient ? (
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-          <EmptyNewClientFields />
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -402,34 +411,24 @@ function StopCard({
           </div>
         </div>
       ) : clientCode.trim() ? (
-        <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <Badge tone="blue">Alta rápida</Badge>
-            <p className="text-sm text-blue-900">
-              No existe el código {normalizeClientCode(clientCode)}. Si completás estos datos, se guarda como cliente nuevo.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field name="stopNewClientName" label="Nombre / razón social" placeholder="Ej: Cliente SA" required />
-            <Field name="stopNewClientContact" label="Contacto operativo" placeholder="Ej: Logística / depósito" />
-            <Field name="stopNewClientPhone" label="Teléfono" placeholder="Ej: 343 555-0000" />
-            <Field name="stopNewClientReception" label="Horario recepción" placeholder="Ej: 08:00 a 16:00" />
-            <SelectField name="stopNewClientRequiresTurn" label="Requiere turno" options={["No", "Sí"]} />
-            <Field name="stopNewClientNotes" label="Condición operativa" placeholder="Ej: ingreso por portón 2" />
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <Badge tone="amber">Cliente no encontrado</Badge>
+              <p className="mt-2 text-sm text-amber-900">
+                No existe el código {normalizeClientCode(clientCode)}. Crealo primero en Clientes para guardar su ficha e historial.
+              </p>
+            </div>
+            <Link href={createClientHref} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+              Crear en Clientes
+            </Link>
           </div>
         </div>
       ) : (
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-          <EmptyNewClientFields />
-          Ingresá el código del cliente para traer contacto, horarios, requisitos y alertas. También podés escribir un código nuevo para darlo de alta desde este viaje.
+          Ingresá el código del cliente para traer contacto, horarios, requisitos y alertas. Si no existe, primero cargalo desde Clientes.
         </div>
       )}
-
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-        <CheckOption text="Requiere pedir turno" />
-        <CheckOption text="Turno ya solicitado" />
-        <CheckOption text="Requiere documentación previa" />
-      </div>
 
       <div className="mt-4">
         <TextArea
@@ -447,19 +446,6 @@ function StopCard({
         </div>
       </div>
     </div>
-  );
-}
-
-function EmptyNewClientFields() {
-  return (
-    <>
-      <input type="hidden" name="stopNewClientName" value="" />
-      <input type="hidden" name="stopNewClientContact" value="" />
-      <input type="hidden" name="stopNewClientPhone" value="" />
-      <input type="hidden" name="stopNewClientReception" value="" />
-      <input type="hidden" name="stopNewClientRequiresTurn" value="No" />
-      <input type="hidden" name="stopNewClientNotes" value="" />
-    </>
   );
 }
 
