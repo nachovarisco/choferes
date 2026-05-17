@@ -1,302 +1,169 @@
 "use client";
 
-import { useState } from "react";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  FileText,
-  Search,
-  Upload,
-  X,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, CheckCircle2, FileText, Upload } from "lucide-react";
+import { Field, ModalActions, ModalFrame, SearchBox, SelectField, TextArea } from "@/components/controls";
+import { Badge, Button, DataTable, PageHeader, StatCard } from "@/components/ui";
+import { createDocumentAction } from "@/app/actions";
+import { useLiveData } from "@/components/use-live-data";
+import { documentTypes, statusTone } from "@/lib/data";
 
 export default function DocumentosPage() {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const { documents } = useLiveData();
+
+  const filteredDocuments = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+
+    if (!normalized) {
+      return documents;
+    }
+
+    return documents.filter((document) =>
+      [document.name, document.owner, document.type, document.status, document.due]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalized),
+    );
+  }, [documents, query]);
 
   return (
     <div>
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Documentación</h1>
-          <p className="text-slate-500 mt-1">
-            Control centralizado de documentos, vencimientos y archivos operativos.
-          </p>
-        </div>
+      <PageHeader
+        title="Documentación"
+        description="Control centralizado de documentos, vencimientos y archivos operativos."
+        actions={
+          <Button onClick={() => setOpen(true)}>
+            <Upload size={18} />
+            Subir documento
+          </Button>
+        }
+      />
 
-        <button
-          onClick={() => setOpen(true)}
-          className="bg-slate-900 text-white rounded-xl px-5 py-3 text-sm flex items-center gap-2"
-        >
-          <Upload size={18} />
-          Subir documento
-        </button>
-      </div>
-
-      <section className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-        <MiniCard title="Vigentes" value="84" />
-        <MiniCard title="Por vencer" value="7" warning />
-        <MiniCard title="Vencidos" value="3" danger />
-        <MiniCard title="Pendientes" value="5" />
+      <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <StatCard title="Vigentes" value={String(documents.filter((document) => document.status === "Vigente").length)} icon={<CheckCircle2 size={18} />} tone="green" />
+        <StatCard title="Por vencer" value={String(documents.filter((document) => document.status === "Por vencer").length)} icon={<FileText size={18} />} tone="amber" />
+        <StatCard title="Vencidos" value={String(documents.filter((document) => document.status === "Vencido").length)} icon={<AlertTriangle size={18} />} tone="red" />
+        <StatCard title="Pendientes" value={String(documents.filter((document) => document.status === "Pendiente").length)} icon={<FileText size={18} />} />
       </section>
 
-      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
-        <div className="flex items-center gap-3 border border-slate-200 rounded-xl px-4 py-3">
-          <Search size={18} className="text-slate-400" />
-          <input
-            className="w-full outline-none text-sm"
-            placeholder="Buscar por chofer, patente, cliente, tipo de documento..."
-          />
-        </div>
+      <section className="mb-6">
+        <SearchBox value={query} onChange={setQuery} placeholder="Buscar por chofer, patente, cliente o tipo de documento..." />
       </section>
 
-      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500">
-              <tr className="text-left">
-                <th className="p-4">Documento</th>
-                <th className="p-4">Titular</th>
-                <th className="p-4">Categoría</th>
-                <th className="p-4">Vence</th>
-                <th className="p-4">Estado</th>
-                <th className="p-4">Archivo</th>
-              </tr>
-            </thead>
+      <section className="space-y-6">
+        {documentTypes.map((type) => {
+          const group = filteredDocuments.filter((document) => document.type === type);
 
-            <tbody className="divide-y divide-slate-100">
-              <DocRow name="Licencia Profesional" owner="Juan Pérez" type="Chofer" due="27/04/2026" status="Por vencer" />
-              <DocRow name="Seguro Unidad" owner="AB123CD" type="Unidad" due="12/09/2026" status="Vigente" />
-              <DocRow name="VTV" owner="AE321JK" type="Unidad" due="01/04/2026" status="Vencido" />
-              <DocRow name="ART" owner="Martín Silva" type="Chofer" due="-" status="Pendiente" />
-              <DocRow name="Constancia AFIP" owner="Transporte Nexo" type="Empresa" due="31/12/2026" status="Vigente" />
-            </tbody>
-          </table>
-        </div>
+          return (
+            <div key={type} className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-slate-950">Archivos por {type.toLowerCase()}</h2>
+                <Badge tone={group.length > 0 ? "blue" : "slate"}>{group.length} archivos</Badge>
+              </div>
+              <DataTable
+                data={group}
+                getKey={(document) => document.id}
+                emptyText={`No hay documentos de tipo ${type.toLowerCase()} para mostrar.`}
+                columns={[
+                  { header: "ID", cell: (document) => <span className="font-mono text-xs text-slate-600">{document.id}</span> },
+                  { header: "Documento", cell: (document) => <span className="font-medium text-slate-950">{document.name}</span> },
+                  { header: "Asociado a", cell: (document) => document.owner },
+                  { header: "Relación", cell: (document) => document.association },
+                  { header: "Vencimiento", cell: (document) => document.due },
+                  {
+                    header: "Estado",
+                    cell: (document) => (
+                      <Badge tone={statusTone(document.status)}>
+                        {document.status === "Vigente" ? <CheckCircle2 size={16} /> : document.status === "Vencido" ? <AlertTriangle size={16} /> : <FileText size={16} />}
+                        {document.status}
+                      </Badge>
+                    ),
+                  },
+                  {
+                    header: "Archivo",
+                    cell: (document) =>
+                      document.fileUrl ? (
+                        <Link href={document.fileUrl} target="_blank" className="font-medium text-blue-600 hover:underline">
+                          Ver archivo
+                        </Link>
+                      ) : (
+                        <span className="text-slate-400">Sin archivo</span>
+                      ),
+                  },
+                ]}
+              />
+            </div>
+          );
+        })}
       </section>
 
-      {open && <UploadDocumentModal onClose={() => setOpen(false)} />}
+      {open ? <UploadDocumentModal onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
 
 function UploadDocumentModal({ onClose }: { onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-0 md:p-6">
-      <div className="bg-white w-full md:max-w-4xl rounded-t-3xl md:rounded-3xl shadow-xl max-h-[92vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">Subir documento</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Cargá un archivo y vinculalo a un chofer, unidad, cliente o empresa.
-            </p>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-50"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-8">
-          <section>
-            <h3 className="font-semibold text-slate-900 mb-4">Datos del documento</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Select
-                label="Tipo de documento"
-                options={[
-                  "Licencia profesional",
-                  "DNI",
-                  "VTV",
-                  "Seguro unidad",
-                  "Póliza",
-                  "ART",
-                  "Constancia AFIP",
-                  "Remito",
-                  "Orden de carga",
-                  "Otro",
-                ]}
-              />
-
-              <Select
-                label="Categoría"
-                options={["Chofer", "Unidad", "Empresa", "Cliente", "Viaje"]}
-              />
-
-              <Field label="Nombre / descripción" placeholder="Ej: VTV unidad AB123CD" />
-              <Field label="Número / referencia" placeholder="Ej: póliza, remito, OC..." />
-            </div>
-          </section>
-
-          <section>
-            <h3 className="font-semibold text-slate-900 mb-4">Vinculación</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Select
-                label="Titular relacionado"
-                options={[
-                  "Juan Pérez",
-                  "Luis Gómez",
-                  "AB123CD",
-                  "AC456EF",
-                  "Easy",
-                  "Cencosud",
-                  "Transporte Nexo",
-                ]}
-              />
-
-              <Field label="Fecha de emisión" type="date" />
-              <Field label="Fecha de vencimiento" type="date" />
-            </div>
-          </section>
-
-          <section className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-            <div className="mx-auto w-14 h-14 rounded-2xl bg-white border border-slate-200 flex items-center justify-center mb-4">
-              <Upload size={24} className="text-slate-700" />
-            </div>
-
-            <h3 className="font-semibold text-slate-900">Arrastrá o seleccioná el archivo</h3>
-            <p className="text-sm text-slate-500 mt-1">
-              PDF, imagen o documento escaneado. Después se guardará en la ficha correspondiente.
-            </p>
-
-            <button className="mt-5 bg-slate-900 text-white rounded-xl px-5 py-3 text-sm">
-              Seleccionar archivo
-            </button>
-          </section>
-
-          <section className="rounded-2xl bg-amber-50 border border-amber-200 p-5">
-            <div className="flex gap-3">
-              <AlertTriangle size={20} className="text-amber-700 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-amber-900">Control automático</h3>
-                <p className="text-sm text-amber-900 mt-1">
-                  Si cargás fecha de vencimiento, el sistema podrá alertar documentos por vencer
-                  y bloquear asignaciones críticas en el futuro.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <section>
-            <label className="text-sm text-slate-600 mb-2 block">Observaciones internas</label>
-            <textarea
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none min-h-24"
-              placeholder="Ej: documento solicitado por cliente, renovación pendiente, aclaraciones..."
+    <ModalFrame
+      title="Subir documento"
+      description="Cargá un archivo y vinculalo a un chofer, unidad, cliente o empresa."
+      onClose={onClose}
+      footer={<ModalActions onCancel={onClose} confirmLabel="Guardar documento" submit formId="new-document-form" />}
+    >
+      <form id="new-document-form" action={createDocumentAction} className="space-y-8">
+        <section>
+          <h3 className="mb-4 font-semibold text-slate-950">Datos del documento</h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <SelectField
+              name="name"
+              label="Tipo de documento"
+              options={["Licencia profesional", "DNI", "VTV", "Seguro unidad", "Póliza", "ART", "Constancia AFIP", "Remito", "Orden de carga", "Otro"]}
+              required
             />
-          </section>
-        </div>
+            <SelectField name="category" label="Categoría" options={["Chofer", "Unidad", "Empresa", "Cliente", "Viaje"]} required />
+            <Field name="association" label="Relación" placeholder="Ej: Unidad / Chofer + Unidad / Viaje" required />
+            <Field name="reference" label="Número / referencia" placeholder="Ej: póliza, remito, OC..." />
+          </div>
+        </section>
 
-        <div className="sticky bottom-0 bg-white border-t border-slate-200 p-6 flex flex-col sm:flex-row gap-3 sm:justify-end">
-          <button
-            onClick={onClose}
-            className="border border-slate-200 rounded-xl px-5 py-3 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            Cancelar
-          </button>
+        <section>
+          <h3 className="mb-4 font-semibold text-slate-950">Vinculación</h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <Field name="owner" label="Titular relacionado" placeholder="Ej: Juan Pérez / AB123CD / Easy" required />
+            <Field label="Fecha de emisión" type="date" />
+            <Field name="due" label="Fecha de vencimiento" type="date" />
+          </div>
+        </section>
 
-          <button
-            onClick={onClose}
-            className="bg-slate-900 text-white rounded-xl px-5 py-3 text-sm"
-          >
-            Guardar documento
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+        <section className="rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-lg border border-slate-200 bg-white">
+            <Upload size={24} className="text-slate-700" />
+          </div>
+          <h3 className="font-semibold text-slate-950">Arrastrá o seleccioná el archivo</h3>
+          <p className="mt-1 text-sm text-slate-500">PDF, imagen o documento escaneado. Después se guardará en la ficha correspondiente.</p>
+          <label className="mt-5 inline-flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+            Seleccionar archivo
+            <input name="file" type="file" className="sr-only" />
+          </label>
+        </section>
 
-function MiniCard({
-  title,
-  value,
-  danger = false,
-  warning = false,
-}: any) {
-  const color = danger
-    ? "text-red-600"
-    : warning
-    ? "text-amber-600"
-    : "text-slate-900";
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-5">
+          <div className="flex gap-3">
+            <AlertTriangle size={20} className="mt-0.5 text-amber-700" />
+            <div>
+              <h3 className="font-semibold text-amber-900">Control automático</h3>
+              <p className="mt-1 text-sm text-amber-900">
+                Si cargás fecha de vencimiento, el sistema podrá alertar documentos por vencer y bloquear asignaciones críticas en el futuro.
+              </p>
+            </div>
+          </div>
+        </section>
 
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-      <p className="text-sm text-slate-500">{title}</p>
-      <h2 className={`text-3xl font-bold mt-2 ${color}`}>{value}</h2>
-    </div>
-  );
-}
-
-function DocRow({ name, owner, type, due, status }: any) {
-  const color =
-    status === "Vigente"
-      ? "bg-emerald-100 text-emerald-700"
-      : status === "Por vencer"
-      ? "bg-amber-100 text-amber-700"
-      : status === "Pendiente"
-      ? "bg-blue-100 text-blue-700"
-      : "bg-red-100 text-red-700";
-
-  const icon =
-    status === "Vigente" ? (
-      <CheckCircle2 size={16} />
-    ) : status === "Vencido" ? (
-      <AlertTriangle size={16} />
-    ) : (
-      <FileText size={16} />
-    );
-
-  return (
-    <tr className="hover:bg-slate-50">
-      <td className="p-4 font-medium text-slate-900">{name}</td>
-      <td className="p-4">{owner}</td>
-      <td className="p-4">{type}</td>
-      <td className="p-4">{due}</td>
-      <td className="p-4">
-        <span className={`px-3 py-1 rounded-full text-xs font-medium inline-flex items-center gap-2 ${color}`}>
-          {icon}
-          {status}
-        </span>
-      </td>
-      <td className="p-4 text-blue-600 cursor-pointer font-medium">
-        Ver archivo
-      </td>
-    </tr>
-  );
-}
-
-function Field({
-  label,
-  placeholder = "",
-  type = "text",
-}: {
-  label: string;
-  placeholder?: string;
-  type?: string;
-}) {
-  return (
-    <div>
-      <label className="text-sm text-slate-600 mb-2 block">{label}</label>
-      <input
-        type={type}
-        placeholder={placeholder}
-        className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none"
-      />
-    </div>
-  );
-}
-
-function Select({ label, options }: { label: string; options: string[] }) {
-  return (
-    <div>
-      <label className="text-sm text-slate-600 mb-2 block">{label}</label>
-      <select className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none bg-white">
-        {options.map((item) => (
-          <option key={item}>{item}</option>
-        ))}
-      </select>
-    </div>
+        <TextArea name="notes" label="Observaciones internas" placeholder="Ej: documento solicitado por cliente, renovación pendiente, aclaraciones..." />
+      </form>
+    </ModalFrame>
   );
 }

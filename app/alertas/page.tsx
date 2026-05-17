@@ -1,142 +1,113 @@
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Clock3,
-  FileWarning,
-  Search,
-  Truck,
-  User,
-} from "lucide-react";
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, CheckCircle2, Clock3, FileWarning, Truck, User } from "lucide-react";
+import { Field, ModalActions, ModalFrame, SearchBox, SelectField, TextArea } from "@/components/controls";
+import { Badge, Button, Card, PageHeader, StatCard } from "@/components/ui";
+import { createIncidentAction } from "@/app/actions";
+import { useLiveData } from "@/components/use-live-data";
+import type { Incident } from "@/lib/data";
 
 export default function AlertasPage() {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const { incidents } = useLiveData();
+
+  const filteredIncidents = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+
+    if (!normalized) {
+      return incidents;
+    }
+
+    return incidents.filter((incident) =>
+      [incident.type, incident.title, incident.detail].join(" ").toLowerCase().includes(normalized),
+    );
+  }, [incidents, query]);
+
   return (
     <div>
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">
-            Alertas e Incidencias
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Seguimiento de problemas operativos, documentación y demoras.
-          </p>
-        </div>
+      <PageHeader
+        title="Alertas e Incidencias"
+        description="Seguimiento de problemas operativos, documentación y demoras."
+        actions={<Button onClick={() => setOpen(true)}>Nueva incidencia</Button>}
+      />
 
-        <button className="bg-slate-900 text-white rounded-xl px-5 py-3 text-sm">
-          Nueva incidencia
-        </button>
-      </div>
-
-      <section className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-        <MiniCard title="Abiertas" value="8" danger />
-        <MiniCard title="Críticas" value="3" danger />
-        <MiniCard title="Resueltas hoy" value="5" />
-        <MiniCard title="Pendientes revisión" value="4" />
+      <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <StatCard title="Abiertas" value={String(incidents.filter((incident) => incident.type !== "Resuelta").length)} icon={<AlertTriangle size={18} />} tone="red" />
+        <StatCard title="Críticas" value={String(incidents.filter((incident) => incident.type === "Crítica").length)} icon={<FileWarning size={18} />} tone="red" />
+        <StatCard title="Resueltas hoy" value={String(incidents.filter((incident) => incident.type === "Resuelta").length)} icon={<CheckCircle2 size={18} />} tone="green" />
+        <StatCard title="Pendientes revisión" value={String(incidents.filter((incident) => incident.type === "Alta" || incident.type === "Media").length)} icon={<Clock3 size={18} />} tone="amber" />
       </section>
 
-      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
-        <div className="flex items-center gap-3 border border-slate-200 rounded-xl px-4 py-3">
-          <Search size={18} className="text-slate-400" />
-          <input
-            className="w-full outline-none text-sm"
-            placeholder="Buscar incidencia, chofer, patente o cliente..."
-          />
-        </div>
+      <section className="mb-6">
+        <SearchBox value={query} onChange={setQuery} placeholder="Buscar incidencia, chofer, patente o cliente..." />
       </section>
 
       <section className="space-y-4">
-        <AlertCard
-          type="Crítica"
-          title="VTV vencida en unidad AE321JK"
-          detail="Camión asignado a Martín Silva."
-          icon={<Truck size={18} />}
-          red
-        />
-
-        <AlertCard
-          type="Alta"
-          title="Viaje Easy con demora de 4 horas"
-          detail="Paraná → Buenos Aires · Chofer Juan Pérez"
-          icon={<Clock3 size={18} />}
-          amber
-        />
-
-        <AlertCard
-          type="Media"
-          title="Licencia de Juan Pérez vence en 3 días"
-          detail="Renovar documentación personal."
-          icon={<User size={18} />}
-        />
-
-        <AlertCard
-          type="Alta"
-          title="Seguro unidad AG987NO vencido"
-          detail="Unidad fuera de servicio."
-          icon={<FileWarning size={18} />}
-          red
-        />
-
-        <AlertCard
-          type="Resuelta"
-          title="Remito faltante cargado correctamente"
-          detail="Cliente Dhinox."
-          icon={<CheckCircle2 size={18} />}
-          green
-        />
+        {filteredIncidents.map((incident) => (
+          <AlertCard key={incident.id} incident={incident} />
+        ))}
       </section>
+
+      {open ? <NewIncidentModal onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
 
-function MiniCard({ title, value, danger = false }: any) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-      <p className="text-sm text-slate-500">{title}</p>
-      <h2 className={`text-3xl font-bold mt-2 ${danger ? "text-red-600" : "text-slate-900"}`}>
-        {value}
-      </h2>
-    </div>
-  );
-}
-
-function AlertCard({
-  type,
-  title,
-  detail,
-  icon,
-  red = false,
-  amber = false,
-  green = false,
-}: any) {
-  const color = red
-    ? "bg-red-100 text-red-700"
-    : amber
-    ? "bg-amber-100 text-amber-700"
-    : green
-    ? "bg-emerald-100 text-emerald-700"
-    : "bg-blue-100 text-blue-700";
+function AlertCard({ incident }: { incident: Incident }) {
+  const icon =
+    incident.title.toLowerCase().includes("unidad") || incident.title.toLowerCase().includes("vtv") ? (
+      <Truck size={18} />
+    ) : incident.title.toLowerCase().includes("licencia") ? (
+      <User size={18} />
+    ) : incident.type === "Resuelta" ? (
+      <CheckCircle2 size={18} />
+    ) : (
+      <AlertTriangle size={18} />
+    );
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    <Card className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex gap-4">
-        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${color}`}>
+        <div className={`flex h-12 w-12 items-center justify-center rounded-lg border ${incident.tone === "red" ? "border-red-200 bg-red-100 text-red-700" : incident.tone === "amber" ? "border-amber-200 bg-amber-100 text-amber-700" : incident.tone === "green" ? "border-emerald-200 bg-emerald-100 text-emerald-700" : "border-blue-200 bg-blue-100 text-blue-700"}`}>
           {icon}
         </div>
-
         <div>
-          <h2 className="font-semibold text-slate-900">{title}</h2>
-          <p className="text-sm text-slate-500 mt-1">{detail}</p>
+          <h2 className="font-semibold text-slate-950">{incident.title}</h2>
+          <p className="mt-1 text-sm text-slate-500">{incident.detail}</p>
         </div>
       </div>
 
       <div className="flex gap-3">
-        <span className={`px-3 py-1 rounded-full text-xs font-medium ${color}`}>
-          {type}
-        </span>
-
-        <button className="border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+        <Badge tone={incident.tone}>{incident.type}</Badge>
+        <Link href={`/alertas/${incident.id}`} className="inline-flex min-h-8 items-center rounded-lg border border-slate-200 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-50">
           Ver
-        </button>
+        </Link>
       </div>
-    </div>
+    </Card>
+  );
+}
+
+function NewIncidentModal({ onClose }: { onClose: () => void }) {
+  return (
+    <ModalFrame
+      title="Nueva incidencia"
+      description="Registrá una alerta operativa y vinculala a un viaje, chofer, unidad o cliente."
+      onClose={onClose}
+      size="md"
+      footer={<ModalActions onCancel={onClose} confirmLabel="Crear incidencia" submit formId="new-incident-form" />}
+    >
+      <form id="new-incident-form" action={createIncidentAction} className="space-y-5">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <SelectField name="priority" label="Prioridad" options={["Crítica", "Alta", "Media"]} required />
+          <SelectField name="type" label="Tipo" options={["Documentación", "Demora", "Unidad", "Chofer", "Cliente"]} required />
+        </div>
+        <Field name="title" label="Título" placeholder="Ej: VTV vencida en unidad..." required />
+        <SelectField name="owner" label="Asociar a" options={["VJ-000124", "Juan Pérez", "AB123CD", "Easy", "Operación general"]} />
+        <TextArea name="detail" label="Detalle" placeholder="Qué pasó, qué impacto tiene y qué hay que resolver." required />
+      </form>
+    </ModalFrame>
   );
 }

@@ -1,135 +1,115 @@
-import {
-  Bell,
-  Building2,
-  FileText,
-  Shield,
-  SlidersHorizontal,
-  Users,
-} from "lucide-react";
+import { Bell, Building2, Database, FileText, Shield, SlidersHorizontal, Users } from "lucide-react";
+import { Badge, Card, LinkButton, PageHeader } from "@/components/ui";
+
+const configItems = [
+  {
+    icon: <Building2 size={20} />,
+    slug: "empresa",
+    title: "Empresa",
+    text: "Datos fiscales, razón social, sucursales y branding.",
+  },
+  {
+    icon: <Users size={20} />,
+    slug: "usuarios",
+    title: "Usuarios y Roles",
+    text: "Administradores, tráfico, choferes y permisos.",
+  },
+  {
+    icon: <Shield size={20} />,
+    slug: "permisos",
+    title: "Permisos",
+    text: "Qué puede ver o editar cada perfil.",
+  },
+  {
+    icon: <FileText size={20} />,
+    slug: "documentos",
+    title: "Tipos de Documentos",
+    text: "Licencia, VTV, seguros, ART, AFIP y personalizados.",
+  },
+  {
+    icon: <Bell size={20} />,
+    slug: "notificaciones",
+    title: "Notificaciones",
+    text: "Alertas de vencimientos, incidencias y viajes.",
+  },
+  {
+    icon: <SlidersHorizontal size={20} />,
+    slug: "operacion",
+    title: "Operación",
+    text: "Estados de viaje, categorías de choferes y etiquetas.",
+  },
+  {
+    icon: <Database size={20} />,
+    slug: "importar",
+    title: "Importar datos",
+    text: "Carga masiva desde Excel o CSV para clientes, choferes, unidades y órdenes.",
+    href: "/importar",
+  },
+];
 
 export default function ConfiguracionPage() {
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">
-          Configuración
-        </h1>
+      <PageHeader
+        title="Configuración"
+        description="Ajustes generales del sistema y estructura operativa."
+      />
 
-        <p className="text-slate-500 mt-1">
-          Ajustes generales del sistema y estructura operativa.
-        </p>
-      </div>
-
-      <section className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        <ConfigCard
-          icon={<Building2 size={20} />}
-          title="Empresa"
-          text="Datos fiscales, razón social, sucursales y branding."
-        />
-
-        <ConfigCard
-          icon={<Users size={20} />}
-          title="Usuarios y Roles"
-          text="Administradores, tráfico, choferes y permisos."
-        />
-
-        <ConfigCard
-          icon={<Shield size={20} />}
-          title="Permisos"
-          text="Qué puede ver o editar cada perfil."
-        />
-
-        <ConfigCard
-          icon={<FileText size={20} />}
-          title="Tipos de Documentos"
-          text="Licencia, VTV, seguros, ART, AFIP y personalizados."
-        />
-
-        <ConfigCard
-          icon={<Bell size={20} />}
-          title="Notificaciones"
-          text="Alertas de vencimientos, incidencias y viajes."
-        />
-
-        <ConfigCard
-          icon={<SlidersHorizontal size={20} />}
-          title="Operación"
-          text="Estados de viaje, categorías de choferes y etiquetas."
-        />
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
+        {configItems.map((item) => (
+          <ConfigCard key={item.title} {...item} />
+        ))}
       </section>
 
-      <section className="mt-8 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <h2 className="font-semibold text-slate-900 mb-4">
-          Categorías internas de choferes
-        </h2>
-
+      <section className="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-4 font-semibold text-slate-950">Categorías internas de choferes</h2>
         <div className="flex flex-wrap gap-3">
-          <Tag text="Nexo Aberturas" blue />
-          <Tag text="Tercero" purple />
-          <Tag text="Mixto" green />
-          <Tag text="General" />
+          <Badge tone="blue">Nexo Aberturas</Badge>
+          <Badge tone="purple">Tercero</Badge>
+          <Badge tone="green">Mixto</Badge>
+          <Badge tone="slate">General</Badge>
         </div>
       </section>
 
-      <section className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-        <h2 className="font-semibold text-slate-900 mb-4">
-          Estados operativos de viaje
-        </h2>
-
+      <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-4 font-semibold text-slate-950">Estados operativos de viaje</h2>
         <div className="flex flex-wrap gap-3">
-          <Tag text="Pendiente" />
-          <Tag text="Asignado" blue />
-          <Tag text="En carga" amber />
-          <Tag text="En viaje" green />
-          <Tag text="Demorado" red />
-          <Tag text="Finalizado" />
+          <Badge tone="slate">Pendiente</Badge>
+          <Badge tone="blue">Asignado</Badge>
+          <Badge tone="amber">En carga</Badge>
+          <Badge tone="green">En viaje</Badge>
+          <Badge tone="red">Demorado</Badge>
+          <Badge tone="slate">Finalizado</Badge>
         </div>
       </section>
     </div>
   );
 }
 
-function ConfigCard({ icon, title, text }: any) {
+function ConfigCard({
+  icon,
+  slug,
+  title,
+  text,
+  href,
+}: {
+  icon: React.ReactNode;
+  slug: string;
+  title: string;
+  text: string;
+  href?: string;
+}) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-      <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-700 mb-4">
+    <Card className="p-6" >
+      <div id={slug} />
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
         {icon}
       </div>
-
-      <h2 className="font-semibold text-slate-900">{title}</h2>
-
-      <p className="text-sm text-slate-500 mt-2">{text}</p>
-
-      <button className="mt-5 border border-slate-200 rounded-xl px-4 py-2 text-sm hover:bg-slate-50">
+      <h2 className="font-semibold text-slate-950">{title}</h2>
+      <p className="mt-2 text-sm text-slate-500">{text}</p>
+      <LinkButton href={href ?? `/configuracion#${slug}`} className="mt-5">
         Configurar
-      </button>
-    </div>
-  );
-}
-
-function Tag({
-  text,
-  blue = false,
-  purple = false,
-  green = false,
-  amber = false,
-  red = false,
-}: any) {
-  const color = blue
-    ? "bg-blue-100 text-blue-700"
-    : purple
-    ? "bg-purple-100 text-purple-700"
-    : green
-    ? "bg-emerald-100 text-emerald-700"
-    : amber
-    ? "bg-amber-100 text-amber-700"
-    : red
-    ? "bg-red-100 text-red-700"
-    : "bg-slate-100 text-slate-700";
-
-  return (
-    <span className={`px-3 py-1 rounded-full text-xs font-medium ${color}`}>
-      {text}
-    </span>
+      </LinkButton>
+    </Card>
   );
 }

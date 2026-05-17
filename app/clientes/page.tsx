@@ -1,198 +1,142 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import {
-  AlertTriangle,
-  Building2,
-  CheckCircle2,
-  Clock,
-  FileText,
-  Search,
-} from "lucide-react";
+import { AlertTriangle, Building2, CheckCircle2, Clock, FileText } from "lucide-react";
+import { Field, ModalActions, ModalFrame, SearchBox, SelectField, TextArea } from "@/components/controls";
+import { Badge, Button, Card, PageHeader, StatCard } from "@/components/ui";
+import { createClientAction } from "@/app/actions";
+import { useLiveData } from "@/components/use-live-data";
+import type { Client } from "@/lib/data";
 
 export default function ClientesPage() {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const { clients } = useLiveData();
+
+  const normalized = query.trim().toLowerCase();
+  const filteredClients = normalized
+    ? clients.filter((client) =>
+        [client.code, client.name, client.contact, client.status, client.tags.join(" "), client.requirements.join(" ")]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalized),
+      )
+    : clients;
+
   return (
     <div>
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Clientes</h1>
-          <p className="text-slate-500 mt-1">
-            Gestión de clientes, requisitos documentales, turnos y condiciones operativas.
-          </p>
-        </div>
+      <PageHeader
+        title="Clientes"
+        description="Gestión de clientes, requisitos documentales, turnos y condiciones operativas."
+        actions={
+          <Button onClick={() => setOpen(true)}>
+            <Building2 size={18} />
+            Nuevo cliente
+          </Button>
+        }
+      />
 
-        <button className="bg-slate-900 text-white rounded-xl px-5 py-3 text-sm flex items-center gap-2">
-          <Building2 size={18} />
-          Nuevo cliente
-        </button>
-      </div>
-
-      <section className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-        <MiniCard title="Clientes activos" value="28" />
-        <MiniCard title="Requieren turno" value="9" danger />
-        <MiniCard title="Documentación previa" value="12" />
-        <MiniCard title="Viajes este mes" value="124" />
+      <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <StatCard title="Clientes activos" value={String(clients.length)} icon={<Building2 size={18} />} />
+        <StatCard title="Requieren turno" value={String(clients.filter((client) => client.requiresTurn).length)} icon={<Clock size={18} />} tone="amber" />
+        <StatCard title="Documentación previa" value={String(clients.filter((client) => client.requirements.length >= 4).length)} icon={<FileText size={18} />} />
+        <StatCard title="Viajes este mes" value={String(clients.reduce((sum, client) => sum + client.tripsThisMonth, 0))} icon={<CheckCircle2 size={18} />} tone="green" />
       </section>
 
-      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
-        <div className="flex items-center gap-3 border border-slate-200 rounded-xl px-4 py-3">
-          <Search size={18} className="text-slate-400" />
-          <input
-            className="w-full outline-none text-sm"
-            placeholder="Buscar cliente, requisito, turno o condición operativa..."
-          />
-        </div>
+      <section className="mb-6">
+        <SearchBox value={query} onChange={setQuery} placeholder="Buscar cliente, requisito, turno o condición operativa..." />
       </section>
 
-      <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <ClientCard
-          name="Easy"
-          slug="easy"
-          contact="Operaciones Buenos Aires"
-          trips="42 viajes este mes"
-          status="Requiere turno"
-          risk
-          tags={["Pedir turno", "Documentación previa", "Remito físico"]}
-          requirements={["Licencia chofer", "Seguro unidad", "VTV", "ART", "Constancia AFIP"]}
-        />
-
-        <ClientCard
-          name="Cencosud"
-          slug="cencosud"
-          contact="Logística Regional"
-          trips="31 viajes este mes"
-          status="Horario estricto"
-          risk
-          tags={["Pedir turno", "Horario estricto", "Avisar antes de llegar"]}
-          requirements={["Licencia chofer", "Seguro unidad", "VTV", "Póliza", "DNI chofer"]}
-        />
-
-        <ClientCard
-          name="Dhinox"
-          slug="dhinox"
-          contact="Depósito Santa Fe"
-          trips="18 viajes este mes"
-          status="Documentación completa"
-          tags={["Remito físico", "Avisar antes de llegar"]}
-          requirements={["Remito", "Seguro unidad", "Habilitación unidad"]}
-        />
-
-        <ClientCard
-          name="Julicroc"
-          slug="julicroc"
-          contact="Administración"
-          trips="15 viajes este mes"
-          status="Revisión pendiente"
-          tags={["No recibe sin OC", "Remito firmado"]}
-          requirements={["Orden de carga", "Remito firmado", "Constancia fiscal"]}
-        />
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        {filteredClients.map((client) => (
+          <ClientCard key={client.slug} client={client} />
+        ))}
       </section>
+
+      {open ? <NewClientModal onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
 
-function MiniCard({ title, value, danger = false }: any) {
+function NewClientModal({ onClose }: { onClose: () => void }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-      <p className="text-sm text-slate-500">{title}</p>
-      <h2 className={`text-3xl font-bold mt-2 ${danger ? "text-red-600" : "text-slate-900"}`}>
-        {value}
-      </h2>
-    </div>
+    <ModalFrame
+      title="Nuevo cliente"
+      description="Cargá la ficha operativa con requisitos y condiciones antes del primer viaje."
+      onClose={onClose}
+      size="lg"
+      footer={<ModalActions onCancel={onClose} confirmLabel="Guardar cliente" submit formId="new-client-form" />}
+    >
+      <form id="new-client-form" action={createClientAction} className="space-y-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field name="name" label="Razón social / nombre" placeholder="Ej: Cliente SA" required />
+          <Field name="code" label="Código de cliente" placeholder="Ej: CLI-0006 o 6" />
+          <Field name="contact" label="Contacto operativo" placeholder="Ej: Logística Regional" required />
+          <Field name="phone" label="Teléfono" placeholder="Ej: 11 5555-0000" required />
+          <Field name="reception" label="Horario de recepción" placeholder="Ej: 08:00 a 16:00" required />
+          <SelectField name="requiresTurn" label="Requiere turno" options={["Sí", "No"]} required />
+          <SelectField name="documentation" label="Documentación previa" options={["Básica", "Completa", "Personalizada"]} required />
+        </div>
+        <TextArea name="notes" label="Condiciones operativas" placeholder="Turnos, ingresos, restricciones, documentación y contactos de descarga." />
+      </form>
+    </ModalFrame>
   );
 }
 
-function ClientCard({
-  name,
-  slug,
-  contact,
-  trips,
-  status,
-  tags,
-  requirements,
-  risk = false,
-}: any) {
+function ClientCard({ client }: { client: Client }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-      <div className="flex items-start justify-between gap-4 mb-5">
+    <Card className="p-6">
+      <div className="mb-5 flex items-start justify-between gap-4">
         <div className="flex gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-slate-200 flex items-center justify-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-slate-200">
             <Building2 size={22} className="text-slate-700" />
           </div>
-
           <div>
-            <h2 className="font-semibold text-slate-900">{name}</h2>
-            <p className="text-sm text-slate-500">{contact}</p>
-            <p className="text-sm text-slate-500 mt-1">{trips}</p>
+            <h2 className="font-semibold text-slate-950">{client.name}</h2>
+            <p className="text-sm text-slate-500">{client.code} · {client.contact}</p>
+            <p className="mt-1 text-sm text-slate-500">{client.tripsThisMonth} viajes este mes</p>
           </div>
         </div>
 
-        <span
-          className={`px-3 py-1 rounded-full text-xs font-medium ${
-            risk ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-          }`}
-        >
-          {status}
-        </span>
+        <Badge tone={client.requiresTurn ? "amber" : "green"}>{client.status}</Badge>
       </div>
 
-      <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 mb-4">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <div className="mb-3 flex items-center gap-2">
           <AlertTriangle size={18} className="text-amber-700" />
-          <p className="text-sm font-semibold text-amber-900">
-            Condiciones operativas del cliente
-          </p>
+          <p className="text-sm font-semibold text-amber-900">Condiciones operativas del cliente</p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {tags.map((tag: string) => (
-            <OperationalTag key={tag} text={tag} />
+          {client.tags.map((tag) => (
+            <Badge key={tag} tone="amber">
+              {tag.toLowerCase().includes("turno") || tag.toLowerCase().includes("horario") ? <Clock size={14} /> : <AlertTriangle size={14} />}
+              {tag}
+            </Badge>
           ))}
         </div>
       </div>
 
-      <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div className="mb-3 flex items-center gap-2">
           <FileText size={18} className="text-slate-600" />
-          <p className="text-sm font-semibold text-slate-900">
-            Requisitos documentales
-          </p>
+          <p className="text-sm font-semibold text-slate-950">Requisitos documentales</p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {requirements.map((item: string) => (
-            <span
-              key={item}
-              className="px-3 py-1 rounded-full text-xs bg-white border border-slate-200 text-slate-700 inline-flex items-center gap-2"
-            >
+          {client.requirements.map((item) => (
+            <Badge key={item} tone="slate">
               <CheckCircle2 size={14} className="text-emerald-500" />
               {item}
-            </span>
+            </Badge>
           ))}
         </div>
       </div>
 
-      <Link
-        href={`/clientes/${slug}`}
-        className="block text-center w-full mt-6 border border-slate-200 rounded-xl py-3 text-sm text-slate-700 hover:bg-slate-50"
-      >
+      <Link href={`/clientes/${client.slug}`} className="mt-6 flex w-full justify-center rounded-lg border border-slate-200 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
         Ver cliente
       </Link>
-    </div>
-  );
-}
-
-function OperationalTag({ text }: { text: string }) {
-  const icon =
-    text.toLowerCase().includes("turno") ||
-    text.toLowerCase().includes("horario") ? (
-      <Clock size={14} />
-    ) : (
-      <AlertTriangle size={14} />
-    );
-
-  return (
-    <span className="px-3 py-1 rounded-full text-xs bg-white border border-amber-200 text-amber-800 inline-flex items-center gap-2">
-      {icon}
-      {text}
-    </span>
+    </Card>
   );
 }

@@ -1,216 +1,163 @@
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  FileText,
-  Phone,
-  Shield,
-  Truck,
-  User,
-} from "lucide-react";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { AlertTriangle, CheckCircle2, Clock, FileText, Phone, Shield, Truck, User } from "lucide-react";
+import { Badge, DataTable, PageHeader, Panel, StatCard } from "@/components/ui";
+import { statusTone, tripRoute } from "@/lib/data";
+import { getLiveData } from "@/lib/queries";
 
-export default function ChoferDetallePage() {
+export default async function ChoferDetallePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const data = await getLiveData();
+  const driver = data.drivers.find((item) => item.slug === id.toLowerCase());
+
+  if (!driver) {
+    notFound();
+  }
+
+  const unit = driver.unitId ? data.units.find((item) => item.id === driver.unitId) : undefined;
+  const driverTrips = data.trips.filter((trip) => trip.driverSlug === driver.slug);
+  const findUnit = (unitId: string) => data.units.find((item) => item.id === unitId);
+
   return (
     <div>
-      <div className="mb-8">
-        <p className="text-sm text-slate-500 mb-2">Choferes / Juan Pérez</p>
-        <h1 className="text-3xl font-bold text-slate-900">Juan Pérez</h1>
-        <p className="text-slate-500 mt-1">
-          Legajo operativo, unidad asignada, documentación, viajes e incidencias.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Choferes"
+        title={driver.name}
+        description="Legajo operativo, unidad asignada, documentación, viajes e incidencias."
+      />
 
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+      <section className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
           <div className="flex gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-xl font-bold">
-              J
+            <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-slate-950 text-xl font-bold text-white">
+              {driver.initials}
             </div>
-
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Juan Pérez</h2>
-              <p className="text-sm text-slate-500">343 555-1200 · DNI 32.456.789</p>
-
-              <div className="flex flex-wrap gap-2 mt-4">
-                <Tag text="Nexo Aberturas" blue />
-                <Tag text="En viaje" green />
-                <Tag text="Licencia por vencer" amber />
+              <h2 className="text-xl font-bold text-slate-950">{driver.name}</h2>
+              <p className="text-sm text-slate-500">
+                {driver.phone} · DNI {driver.dni}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Badge tone={driver.category === "Tercero" ? "purple" : driver.category === "Mixto" ? "green" : "blue"}>{driver.category}</Badge>
+                <Badge tone={statusTone(driver.status)}>{driver.status}</Badge>
+                {driver.licenseRisk ? <Badge tone="amber">Licencia por vencer</Badge> : null}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-amber-50 rounded-2xl border border-amber-200 shadow-sm p-6">
-          <div className="flex items-center gap-3 mb-3">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <div className="mb-3 flex items-center gap-3">
             <AlertTriangle size={20} className="text-amber-700" />
             <h2 className="font-semibold text-amber-900">Atención</h2>
           </div>
-
-          <p className="text-sm text-amber-900">
-            La licencia profesional vence en 3 días.
-          </p>
+          <p className="text-sm text-amber-900">{driver.license}</p>
         </div>
       </section>
 
-      <section className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <section className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-4">
+        <StatCard title="Viajes realizados" value={String(driver.tripsThisMonth)} icon={<Truck size={18} />} />
+        <StatCard title="Puntualidad" value={`${driver.punctuality}%`} icon={<Clock size={18} />} tone="green" />
+        <StatCard title="Incidencias" value={String(driver.incidents)} icon={<AlertTriangle size={18} />} tone={driver.incidents > 0 ? "red" : "green"} />
+        <StatCard title="Última actividad" value={driver.lastActivity} icon={<Clock size={18} />} />
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Panel title="Datos del chofer">
-          <Info icon={<User size={18} />} text="Categoría: Nexo Aberturas" />
-          <Info icon={<Phone size={18} />} text="Teléfono: 343 555-1200" />
-          <Info icon={<Shield size={18} />} text="Estado: En viaje" />
-          <Info icon={<Clock size={18} />} text="Última actividad: hace 18 min" />
+          <Info icon={<User size={18} />} text={`Categoría: ${driver.category}`} />
+          <Info icon={<Phone size={18} />} text={`Teléfono: ${driver.phone}`} />
+          <Info icon={<Shield size={18} />} text={`Estado: ${driver.status}`} />
+          <Info icon={<Clock size={18} />} text={`Última actividad: ${driver.lastActivity}`} />
         </Panel>
 
         <Panel title="Unidad asignada">
-          <Info icon={<Truck size={18} />} text="Volvo 370 · AB123CD" />
-          <Info icon={<CheckCircle2 size={18} />} text="Seguro vigente" />
-          <Info icon={<CheckCircle2 size={18} />} text="VTV vigente" />
-          <Info icon={<Clock size={18} />} text="Service en 8.000 km" />
+          {unit ? (
+            <Link href={`/unidades/${unit.id}`} className="flex items-center gap-3 text-sm font-medium text-blue-600 hover:underline">
+              <Truck size={18} />
+              {unit.brand} {unit.model} · {unit.plate}
+            </Link>
+          ) : (
+            <Info icon={<Truck size={18} />} text="Sin unidad asignada" />
+          )}
+          {unit?.docs.map((doc) => (
+            <Info key={doc} icon={<CheckCircle2 size={18} />} text={doc} />
+          ))}
+          <Info icon={<Clock size={18} />} text={unit ? `Service: ${unit.serviceDue}` : "Sin service programado"} />
         </Panel>
 
         <Panel title="Documentación personal">
           <Doc text="DNI cargado" />
-          <Doc text="Licencia profesional vence en 3 días" danger />
+          <Doc text={driver.license} danger={driver.licenseRisk} />
           <Doc text="ART vigente" />
           <Doc text="Apto médico vigente" />
         </Panel>
       </section>
 
-      <section className="grid grid-cols-1 xl:grid-cols-3 gap-6 mt-6">
-        <Panel title="Rendimiento mensual">
-          <Metric label="Viajes realizados" value="18" />
-          <Metric label="Puntualidad" value="91%" />
-          <Metric label="Incidencias" value="2" danger />
-          <Metric label="Km estimados" value="8.420" />
-        </Panel>
-
+      <section className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Panel title="Viaje actual">
-          <Info icon={<Truck size={18} />} text="VJ-000124 · Easy + Dhinox" />
-          <Info icon={<Clock size={18} />} text="Estado: En viaje" />
-          <Info icon={<FileText size={18} />} text="Documentación completa" />
-          <Info icon={<AlertTriangle size={18} />} text="Easy requiere turno" />
+          {driverTrips[0] ? (
+            <>
+              <Info icon={<Truck size={18} />} text={`${driverTrips[0].id} · ${tripRoute(driverTrips[0])}`} />
+              <Info icon={<Clock size={18} />} text={`Estado: ${driverTrips[0].status}`} />
+              <Info icon={<FileText size={18} />} text="Documentación completa" />
+              <Info icon={<AlertTriangle size={18} />} text={driverTrips[0].alert} />
+            </>
+          ) : (
+            <Info icon={<Truck size={18} />} text="Sin viaje activo" />
+          )}
         </Panel>
 
-        <Panel title="Incidencias recientes">
-          <Incident text="Demora 4 hs en descarga Easy" amber />
-          <Incident text="Remito cargado fuera de horario" />
-          <Incident text="Sin incidencias graves" green />
+        <Panel title="Incidencias recientes" className="xl:col-span-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <Badge tone="amber">Demora 4 hs en descarga Easy</Badge>
+            <Badge tone="slate">Remito cargado fuera de horario</Badge>
+            <Badge tone="green">Sin incidencias graves</Badge>
+          </div>
         </Panel>
       </section>
 
-      <section className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-200">
-          <h2 className="font-semibold text-slate-900">Historial de viajes</h2>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500">
-              <tr className="text-left">
-                <th className="p-4">Viaje</th>
-                <th className="p-4">Cliente</th>
-                <th className="p-4">Ruta</th>
-                <th className="p-4">Unidad</th>
-                <th className="p-4">Estado</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100">
-              <Trip id="VJ-000124" client="Easy + Dhinox" route="Paraná → Buenos Aires" unit="AB123CD" status="En viaje" />
-              <Trip id="VJ-000119" client="Cencosud" route="Rosario → Córdoba" unit="AB123CD" status="Entregado" />
-              <Trip id="VJ-000112" client="Julicroc" route="Santa Fe → Mendoza" unit="AB123CD" status="Entregado" />
-            </tbody>
-          </table>
-        </div>
+      <section className="mt-6">
+        <DataTable
+          data={driverTrips}
+          getKey={(trip) => trip.slug}
+          emptyText="Este chofer todavía no tiene viajes cargados."
+          columns={[
+            {
+              header: "Viaje",
+              cell: (trip) => (
+                <Link href={`/viajes/${trip.slug}`} className="font-medium text-blue-600 hover:underline">
+                  {trip.id}
+                </Link>
+              ),
+            },
+            { header: "Ruta", cell: (trip) => tripRoute(trip) },
+            { header: "Unidad", cell: (trip) => findUnit(trip.unitId)?.plate ?? "Sin unidad" },
+            { header: "Estado", cell: (trip) => <Badge tone={statusTone(trip.status)}>{trip.status}</Badge> },
+          ]}
+        />
       </section>
     </div>
   );
 }
 
-function Panel({ title, children }: any) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-      <h2 className="font-semibold text-slate-900 mb-5">{title}</h2>
-      <div className="space-y-3">{children}</div>
-    </div>
-  );
-}
-
-function Info({ icon, text }: any) {
+function Info({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
     <div className="flex items-center gap-3 text-sm text-slate-600">
-      {icon}
+      <span className="text-slate-500">{icon}</span>
       {text}
     </div>
   );
 }
 
-function Doc({ text, danger = false }: any) {
+function Doc({ text, danger = false }: { text: string; danger?: boolean }) {
   return (
     <div className={`flex items-center gap-3 text-sm ${danger ? "text-red-600" : "text-slate-600"}`}>
       {danger ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} className="text-emerald-600" />}
       {text}
     </div>
-  );
-}
-
-function Metric({ label, value, danger = false }: any) {
-  return (
-    <div className="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0">
-      <span className="text-sm text-slate-600">{label}</span>
-      <span className={`font-bold ${danger ? "text-red-600" : "text-slate-900"}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function Incident({ text, amber = false, green = false }: any) {
-  const color = green
-    ? "bg-emerald-100 text-emerald-700"
-    : amber
-    ? "bg-amber-100 text-amber-700"
-    : "bg-slate-100 text-slate-700";
-
-  return (
-    <div className={`rounded-xl px-4 py-3 text-sm font-medium ${color}`}>
-      {text}
-    </div>
-  );
-}
-
-function Trip({ id, client, route, unit, status }: any) {
-  const color =
-    status === "Entregado"
-      ? "bg-emerald-100 text-emerald-700"
-      : "bg-blue-100 text-blue-700";
-
-  return (
-    <tr className="hover:bg-slate-50">
-      <td className="p-4 font-medium text-slate-900">{id}</td>
-      <td className="p-4">{client}</td>
-      <td className="p-4">{route}</td>
-      <td className="p-4">{unit}</td>
-      <td className="p-4">
-        <span className={`px-3 py-1 rounded-full text-xs font-medium ${color}`}>
-          {status}
-        </span>
-      </td>
-    </tr>
-  );
-}
-
-function Tag({ text, blue = false, green = false, amber = false }: any) {
-  const color = blue
-    ? "bg-blue-100 text-blue-700"
-    : green
-    ? "bg-emerald-100 text-emerald-700"
-    : amber
-    ? "bg-amber-100 text-amber-700"
-    : "bg-slate-100 text-slate-700";
-
-  return (
-    <span className={`px-3 py-1 rounded-full text-xs font-medium ${color}`}>
-      {text}
-    </span>
   );
 }

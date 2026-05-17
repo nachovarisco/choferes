@@ -1,144 +1,160 @@
-import { AlertTriangle, Calendar, Search, Truck, Wrench } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { Calendar, Search, Truck, Wrench } from "lucide-react";
+import { Field, ModalActions, ModalFrame, SearchBox, SelectField, TextArea } from "@/components/controls";
+import { Badge, Button, DataTable, PageHeader, StatCard } from "@/components/ui";
+import { createMaintenanceAction } from "@/app/actions";
+import { useLiveData } from "@/components/use-live-data";
+import { statusTone, type Unit } from "@/lib/data";
 
 export default function MantenimientoPage() {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const { maintenanceJobs, units } = useLiveData();
+  const findUnit = (id: string) => units.find((unit) => unit.id === id.toLowerCase());
+  const getUnitMaintenanceJob = (unitId: string) => maintenanceJobs.find((job) => job.unitId === unitId);
+  const getMaintenanceTone = (unitId: string) => {
+    const unit = findUnit(unitId);
+    const job = getUnitMaintenanceJob(unitId);
+
+    if (job?.risk || unit?.status === "Bloqueada" || unit?.status === "Mantenimiento") {
+      return "red";
+    }
+
+    if (unit?.hasRisk || job) {
+      return "amber";
+    }
+
+    return "green";
+  };
+  const getMaintenanceLabel = (unitId: string) => {
+    const tone = getMaintenanceTone(unitId);
+
+    if (tone === "red") {
+      return "Crítico";
+    }
+
+    if (tone === "amber") {
+      return "A revisar";
+    }
+
+    return "Óptimo";
+  };
+  const getUnitMaintenanceDetail = (unitId: string) => {
+    const unit = findUnit(unitId);
+    const job = getUnitMaintenanceJob(unitId);
+
+    if (job) {
+      return `${job.issue} · ${job.next}`;
+    }
+
+    if (unit?.hasRisk) {
+      return [...unit.docs, ...unit.technicalNotes].join(" · ");
+    }
+
+    return "Sin observaciones críticas";
+  };
+
+  const normalized = query.trim().toLowerCase();
+  const filteredUnits = normalized
+    ? units.filter((unit) =>
+        [
+          unit.plate,
+          unit.brand,
+          unit.model,
+          unit.status,
+          unit.base,
+          unit.docs.join(" "),
+          unit.technicalNotes.join(" "),
+          getUnitMaintenanceDetail(unit.id),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalized),
+      )
+    : units;
+
   return (
     <div>
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">
-            Mantenimiento
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Services, reparaciones, controles preventivos y flota detenida.
-          </p>
-        </div>
+      <PageHeader
+        title="Mantenimiento"
+        description="Services, reparaciones, controles preventivos y flota detenida."
+        actions={
+          <Button onClick={() => setOpen(true)}>
+            <Wrench size={18} />
+            Nuevo service
+          </Button>
+        }
+      />
 
-        <button className="bg-slate-900 text-white rounded-xl px-5 py-3 text-sm flex items-center gap-2">
-          <Wrench size={18} />
-          Nuevo service
-        </button>
-      </div>
-
-      <section className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-        <MiniCard title="En taller" value="3" danger />
-        <MiniCard title="Service próximos" value="5" />
-        <MiniCard title="Reparaciones abiertas" value="4" danger />
-        <MiniCard title="Unidades operativas" value="22" />
+      <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <StatCard title="En taller" value={String(maintenanceJobs.filter((job) => job.status === "En taller").length)} icon={<Wrench size={18} />} tone="red" />
+        <StatCard title="Service próximos" value={String(maintenanceJobs.filter((job) => job.status === "Próximo" || job.status === "Programado").length)} icon={<Calendar size={18} />} tone="amber" />
+        <StatCard title="Reparaciones abiertas" value={String(maintenanceJobs.filter((job) => job.risk).length)} icon={<Search size={18} />} tone="red" />
+        <StatCard title="Unidades operativas" value={String(units.filter((unit) => unit.status === "Operativa").length)} icon={<Truck size={18} />} tone="green" />
       </section>
 
-      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
-        <div className="flex items-center gap-3 border border-slate-200 rounded-xl px-4 py-3">
-          <Search size={18} className="text-slate-400" />
-          <input
-            className="w-full outline-none text-sm"
-            placeholder="Buscar patente, unidad o tipo de reparación..."
-          />
-        </div>
+      <section className="mb-6">
+        <SearchBox value={query} onChange={setQuery} placeholder="Buscar patente, unidad o tipo de reparación..." />
       </section>
 
-      <section className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <MaintenanceCard
-          plate="AE321JK"
-          model="Iveco Cursor 330"
-          issue="Reparación de motor"
-          status="En taller"
-          next="Sin fecha estimada"
-          risk
-        />
+      <DataTable
+        data={filteredUnits}
+        getKey={(unit) => unit.id}
+        columns={[
+          {
+            header: "Unidad",
+            cell: (unit) => (
+              <div>
+                <Link href={`/unidades/${unit.id}`} className="font-semibold text-blue-600 hover:underline">
+                  {unit.plate}
+                </Link>
+                <p className="text-xs text-slate-500">
+                  {unit.brand} {unit.model} · Base {unit.base}
+                </p>
+              </div>
+            ),
+          },
+          { header: "Estado", cell: (unit) => <Badge tone={getMaintenanceTone(unit.id)}>{getMaintenanceLabel(unit.id)}</Badge> },
+          { header: "Operación", cell: (unit) => <Badge tone={statusTone(unit.status)}>{unit.status}</Badge> },
+          { header: "Próximo control", cell: (unit) => unit.serviceDue },
+          { header: "Detalle", cell: (unit) => getUnitMaintenanceDetail(unit.id) },
+          {
+            header: "Acción",
+            cell: (unit) => (
+              <Link href={`/unidades/${unit.id}`} className="font-medium text-blue-600 hover:underline">
+                Ver detalle
+              </Link>
+            ),
+          },
+        ]}
+      />
 
-        <MaintenanceCard
-          plate="AB123CD"
-          model="Volvo 370"
-          issue="Cambio de aceite y filtros"
-          status="Programado"
-          next="28/04/2026"
-        />
-
-        <MaintenanceCard
-          plate="AC456EF"
-          model="Scania 360"
-          issue="Revisión de frenos"
-          status="Próximo"
-          next="02/05/2026"
-        />
-
-        <MaintenanceCard
-          plate="AG987NO"
-          model="Mercedes 1938"
-          issue="Seguro vencido + inspección"
-          status="Bloqueada"
-          next="Urgente"
-          risk
-        />
-      </section>
+      {open ? <NewServiceModal units={units} onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
 
-function MiniCard({ title, value, danger = false }: any) {
+function NewServiceModal({ units, onClose }: { units: Unit[]; onClose: () => void }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-      <p className="text-sm text-slate-500">{title}</p>
-      <h2 className={`text-3xl font-bold mt-2 ${danger ? "text-red-600" : "text-slate-900"}`}>
-        {value}
-      </h2>
-    </div>
-  );
-}
-
-function MaintenanceCard({
-  plate,
-  model,
-  issue,
-  status,
-  next,
-  risk = false,
-}: any) {
-  const color =
-    status === "En taller"
-      ? "bg-red-100 text-red-700"
-      : status === "Bloqueada"
-      ? "bg-red-100 text-red-700"
-      : status === "Programado"
-      ? "bg-blue-100 text-blue-700"
-      : "bg-amber-100 text-amber-700";
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-      <div className="flex items-start justify-between gap-4 mb-5">
-        <div className="flex gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-slate-200 flex items-center justify-center">
-            <Truck size={22} className="text-slate-700" />
-          </div>
-
-          <div>
-            <h2 className="font-semibold text-slate-900">{plate}</h2>
-            <p className="text-sm text-slate-500">{model}</p>
-          </div>
+    <ModalFrame
+      title="Nuevo service"
+      description="Programá una intervención técnica y dejá la unidad marcada para seguimiento."
+      onClose={onClose}
+      size="lg"
+      footer={<ModalActions onCancel={onClose} confirmLabel="Guardar service" submit formId="new-service-form" />}
+    >
+      <form id="new-service-form" action={createMaintenanceAction} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <SelectField name="unitPlate" label="Unidad" options={units.map((unit) => `${unit.plate} · ${unit.brand} ${unit.model}`)} required />
+        <SelectField name="kind" label="Tipo de intervención" options={["Service preventivo", "Reparación", "Inspección", "Documentación"]} required />
+        <Field name="date" label="Fecha programada" type="date" />
+        <SelectField name="priority" label="Prioridad" options={["Normal", "Alta", "Crítica"]} />
+        <div className="md:col-span-2">
+          <TextArea name="detail" label="Detalle" placeholder="Qué hay que hacerle, repuestos necesarios, taller asignado o documentación a renovar." required />
         </div>
-
-        <span className={`px-3 py-1 rounded-full text-xs font-medium ${color}`}>
-          {status}
-        </span>
-      </div>
-
-      <div className="space-y-3">
-        <Info icon={<Wrench size={18} />} text={issue} danger={risk} />
-        <Info icon={<Calendar size={18} />} text={next} />
-      </div>
-
-      <button className="w-full mt-6 border border-slate-200 rounded-xl py-3 text-sm text-slate-700 hover:bg-slate-50">
-        Ver historial
-      </button>
-    </div>
-  );
-}
-
-function Info({ icon, text, danger = false }: any) {
-  return (
-    <div className={`flex items-center gap-3 text-sm ${danger ? "text-red-600" : "text-slate-600"}`}>
-      {icon}
-      <span>{text}</span>
-    </div>
+      </form>
+    </ModalFrame>
   );
 }

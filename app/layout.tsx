@@ -1,5 +1,11 @@
 import "./globals.css";
-import AppShell from "../components/AppShell";;
+import type { Metadata } from "next";
+import AppShell from "../components/AppShell";
+
+export const metadata: Metadata = {
+  title: "Transporte Nexo · Logística OS",
+  description: "Sistema operativo logístico para viajes, choferes, unidades, clientes y documentación.",
+};
 
 export default function RootLayout({
   children,

@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("ADMIN")
+  branch       String   @default("Paraná")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Driver {
+  id             String         @id @default(cuid())
+  slug           String         @unique
+  name           String
+  initials       String
+  status         String
+  category       String
+  phone          String
+  dni            String         @unique
+  license        String
+  licenseRisk    Boolean        @default(false)
+  tripsThisMonth Int            @default(0)
+  punctuality    Int            @default(0)
+  incidents      Int            @default(0)
+  lastActivity   String         @default("Sin actividad")
+  unitId         String?        @unique
+  unit           Unit?          @relation("DriverUnit", fields: [unitId], references: [id])
+  trips          Trip[]
+  movements      CashMovement[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model Unit {
+  id             String           @id @default(cuid())
+  brand          String
+  model          String
+  plate          String           @unique
+  status         String
+  base           String
+  km             Int              @default(0)
+  docs           String           @default("[]")
+  technicalNotes String           @default("[]")
+  serviceDue     String           @default("Sin programar")
+  hasRisk        Boolean          @default(false)
+  assignedDriver Driver?          @relation("DriverUnit")
+  trips          Trip[]
+  movements      CashMovement[]
+  maintenance    MaintenanceJob[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+model Client {
+  id             String       @id @default(cuid())
+  code           String       @unique
+  slug           String       @unique
+  name           String
+  contact        String
+  phone          String
+  reception      String
+  tripsThisMonth Int          @default(0)
+  status         String
+  requiresTurn   Boolean      @default(false)
+  tags           String       @default("[]")
+  requirements   String       @default("[]")
+  delayAverage   String       @default("0m")
+  openIncidents  Int          @default(0)
+  mainTrips      Trip[]       @relation("MainClientTrips")
+  tripClients    TripClient[]
+  stops          TripStop[]
+  orders         LoadOrder[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Trip {
+  id             String         @id @default(cuid())
+  code           String         @unique
+  slug           String         @unique
+  origin         String
+  destination    String
+  status         String
+  alert          String         @default("Sin alertas")
+  date           DateTime
+  assignedCash   Int            @default(0)
+  spentCash      Int            @default(0)
+  mainClientId   String
+  mainClient     Client         @relation("MainClientTrips", fields: [mainClientId], references: [id])
+  driverId       String?
+  driver         Driver?        @relation(fields: [driverId], references: [id])
+  unitId         String?
+  unit           Unit?          @relation(fields: [unitId], references: [id])
+  clients        TripClient[]
+  stops          TripStop[]
+  timeline       TripTimeline[]
+  movements      CashMovement[]
+  documents      Document[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model TripClient {
+  tripId   String
+  clientId String
+  trip     Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([tripId, clientId])
+}
+
+model TripStop {
+  id         String   @id @default(cuid())
+  number     Int
+  address    String
+  goods      String
+  status     String
+  note       String
+  delivered  Boolean  @default(false)
+  alert      String?
+  returnInfo String?
+  tripId     String
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id])
+
+  @@unique([tripId, number])
+}
+
+model TripTimeline {
+  id     String @id @default(cuid())
+  time   String
+  text   String
+  state  String
+  order  Int
+  tripId String
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+}
+
+model LoadOrder {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  slug        String   @unique
+  load        String
+  origin      String
+  destination String
+  status      String
+  docs        String
+  risk        Boolean  @default(false)
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id])
+  driverId    String?
+  unitId      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Document {
+  id          String   @id
+  name        String
+  owner       String
+  association String
+  type        String
+  due         String
+  status      String
+  fileUrl     String?
+  tripId      String?
+  trip        Trip?    @relation(fields: [tripId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Incident {
+  id        String   @id
+  type      String
+  title     String
+  detail    String
+  tone      String
+  status    String   @default("Abierta")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CashMovement {
+  id        String   @id
+  date      DateTime
+  type      String
+  category  String
+  amount    Int
+  status    String
+  risk      Boolean  @default(false)
+  tripId    String
+  trip      Trip     @relation(fields: [tripId], references: [id])
+  driverId  String?
+  driver    Driver?  @relation(fields: [driverId], references: [id])
+  unitId    String?
+  unit      Unit?    @relation(fields: [unitId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MaintenanceJob {
+  id        String   @id
+  issue     String
+  status    String
+  next      String
+  risk      Boolean  @default(false)
+  unitId    String
+  unit      Unit     @relation(fields: [unitId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
