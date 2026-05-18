@@ -5,14 +5,16 @@ import Link from "next/link";
 import { CheckCircle2, Clock, FileWarning, Truck, UserPlus } from "lucide-react";
 import { Field, ModalActions, ModalFrame, SearchBox, SelectField } from "@/components/controls";
 import { Badge, Button, Card, PageHeader, StatCard } from "@/components/ui";
-import { createDriverAction } from "@/app/actions";
 import { useLiveData } from "@/components/use-live-data";
 import { statusTone, type Driver, type Unit } from "@/lib/data";
+import type { LiveData } from "@/lib/live-data";
+import { addDemoDriver, saveDemoLiveData } from "@/lib/demo-store";
 
 export default function ChoferesPage() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const { drivers, units } = useLiveData();
+  const data = useLiveData();
+  const { drivers, units } = data;
   const findUnit = (id: string) => units.find((unit) => unit.id === id.toLowerCase());
 
   const normalized = query.trim().toLowerCase();
@@ -57,12 +59,19 @@ export default function ChoferesPage() {
         ))}
       </section>
 
-      {open ? <NewDriverModal units={units} onClose={() => setOpen(false)} /> : null}
+      {open ? <NewDriverModal data={data} units={units} onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
 
-function NewDriverModal({ units, onClose }: { units: Unit[]; onClose: () => void }) {
+function NewDriverModal({ data, units, onClose }: { data: LiveData; units: Unit[]; onClose: () => void }) {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = addDemoDriver(data, new FormData(event.currentTarget));
+    saveDemoLiveData(result.data, result.label);
+    onClose();
+  };
+
   return (
     <ModalFrame
       title="Nuevo chofer"
@@ -71,7 +80,7 @@ function NewDriverModal({ units, onClose }: { units: Unit[]; onClose: () => void
       size="lg"
       footer={<ModalActions onCancel={onClose} confirmLabel="Guardar chofer" submit formId="new-driver-form" />}
     >
-      <form id="new-driver-form" action={createDriverAction} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <form id="new-driver-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Field name="name" label="Nombre y apellido" placeholder="Ej: Pedro Ramírez" required />
         <Field name="dni" label="DNI" placeholder="Ej: 31.234.567" required />
         <Field name="phone" label="Teléfono" placeholder="Ej: 343 555-0000" required />

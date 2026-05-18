@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Clock3, FileWarning, Truck, User } from "lucide-react";
 import { resolveIncidentAction } from "@/app/actions";
+import { DemoEntityFallback } from "@/components/demo/DemoEntityFallback";
 import { Badge, Button, LinkButton, PageHeader, Panel, StatCard } from "@/components/ui";
 import { getLiveData } from "@/lib/queries";
 
@@ -15,7 +15,7 @@ export default async function AlertaDetallePage({
   const incident = data.incidents.find((item) => item.id === id);
 
   if (!incident) {
-    notFound();
+    return <DemoEntityFallback kind="incident" id={id} />;
   }
 
   const owner = resolveOwner(incident.title);

@@ -6,14 +6,16 @@ import { useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, ClipboardList, FileText, Plus, Truck } from "lucide-react";
 import { Field, ModalActions, ModalFrame, SearchBox, SelectField, TextArea } from "@/components/controls";
 import { Badge, Button, DataTable, PageHeader, StatCard } from "@/components/ui";
-import { createTripAction } from "@/app/actions";
 import { useLiveData } from "@/components/use-live-data";
 import { statusTone, tripRoute, type Client, type Driver, type Order, type Unit } from "@/lib/data";
+import type { LiveData } from "@/lib/live-data";
+import { addDemoTrip, saveDemoLiveData } from "@/lib/demo-store";
 
 export default function ViajesPage() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const { clients, drivers, orders, trips, units } = useLiveData();
+  const data = useLiveData();
+  const { clients, drivers, orders, trips, units } = data;
   const searchParams = useSearchParams();
   const selectedOrder = orders.find((order) => {
     const normalized = (searchParams.get("orden") ?? "").toLowerCase();
@@ -144,6 +146,7 @@ export default function ViajesPage() {
       {open ? (
         <NewTripModal
           clients={clients}
+          data={data}
           drivers={drivers}
           selectedOrder={selectedOrder}
           units={units}
@@ -156,12 +159,14 @@ export default function ViajesPage() {
 
 function NewTripModal({
   clients,
+  data,
   drivers,
   selectedOrder,
   units,
   onClose,
 }: {
   clients: Client[];
+  data: LiveData;
   drivers: Driver[];
   selectedOrder?: Order;
   units: Unit[];
@@ -173,6 +178,13 @@ function NewTripModal({
     setStops((prev) => [...prev, prev.length + 1]);
   };
 
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = addDemoTrip(data, new FormData(event.currentTarget));
+    saveDemoLiveData(result.data, result.label);
+    onClose();
+  };
+
   return (
     <ModalFrame
       title="Nuevo viaje"
@@ -181,7 +193,7 @@ function NewTripModal({
       size="xl"
       footer={<ModalActions onCancel={onClose} confirmLabel="Crear viaje" submit formId="new-trip-form" />}
     >
-      <form id="new-trip-form" action={createTripAction} className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
+      <form id="new-trip-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
         <input type="hidden" name="orderSlug" value={selectedOrder?.slug ?? ""} />
 
         <aside className="rounded-lg border border-slate-200 bg-slate-50 p-4">

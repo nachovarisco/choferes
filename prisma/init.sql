@@ -5,9 +5,115 @@ CREATE TABLE "User" (
     "email" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
     "role" TEXT NOT NULL DEFAULT 'ADMIN',
+    "roleId" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'Activo',
+    "phone" TEXT NOT NULL DEFAULT '',
+    "driverId" TEXT,
     "branch" TEXT NOT NULL DEFAULT 'Paraná',
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "User_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "Role" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "CompanySettings" (
+    "id" TEXT NOT NULL PRIMARY KEY DEFAULT 'default',
+    "name" TEXT NOT NULL DEFAULT 'Transporte Nexo',
+    "legalName" TEXT NOT NULL DEFAULT 'Transporte Nexo SRL',
+    "taxId" TEXT NOT NULL DEFAULT '',
+    "phone" TEXT NOT NULL DEFAULT '',
+    "email" TEXT NOT NULL DEFAULT '',
+    "address" TEXT NOT NULL DEFAULT '',
+    "branchName" TEXT NOT NULL DEFAULT 'Parana',
+    "country" TEXT NOT NULL DEFAULT 'Argentina',
+    "currency" TEXT NOT NULL DEFAULT 'ARS',
+    "timezone" TEXT NOT NULL DEFAULT 'America/Argentina/Buenos_Aires',
+    "website" TEXT NOT NULL DEFAULT '',
+    "logoUrl" TEXT,
+    "primaryColor" TEXT NOT NULL DEFAULT '#0f172a',
+    "accentColor" TEXT NOT NULL DEFAULT '#2563eb',
+    "backgroundColor" TEXT NOT NULL DEFAULT '#f1f5f9',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "ConfigOption" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "kind" TEXT NOT NULL,
+    "label" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "description" TEXT NOT NULL DEFAULT '',
+    "color" TEXT NOT NULL DEFAULT 'slate',
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "requiresDoubleValidation" BOOLEAN NOT NULL DEFAULT false,
+    "blocksOperation" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "OperationalRule" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "code" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "appliesTo" TEXT NOT NULL DEFAULT 'Viajes',
+    "trigger" TEXT NOT NULL,
+    "action" TEXT NOT NULL,
+    "severity" TEXT NOT NULL DEFAULT 'Media',
+    "enabled" BOOLEAN NOT NULL DEFAULT true,
+    "requiresAdmin" BOOLEAN NOT NULL DEFAULT false,
+    "doubleValidation" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "Role" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "slug" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "level" INTEGER NOT NULL DEFAULT 1,
+    "isSystem" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "Permission" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "key" TEXT NOT NULL,
+    "module" TEXT NOT NULL,
+    "action" TEXT NOT NULL,
+    "description" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "RolePermission" (
+    "roleId" TEXT NOT NULL,
+    "permissionId" TEXT NOT NULL,
+
+    PRIMARY KEY ("roleId", "permissionId"),
+    CONSTRAINT "RolePermission_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "Role" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "RolePermission_permissionId_fkey" FOREIGN KEY ("permissionId") REFERENCES "Permission" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "AuditLog" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "actorName" TEXT NOT NULL DEFAULT 'Sistema',
+    "actorRole" TEXT NOT NULL DEFAULT 'ADMIN',
+    "entity" TEXT NOT NULL,
+    "entityId" TEXT NOT NULL,
+    "action" TEXT NOT NULL,
+    "detail" TEXT NOT NULL,
+    "metadata" TEXT NOT NULL DEFAULT '{}',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- CreateTable
@@ -100,6 +206,23 @@ CREATE TABLE "Trip" (
     CONSTRAINT "Trip_mainClientId_fkey" FOREIGN KEY ("mainClientId") REFERENCES "Client" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "Trip_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "Trip_unitId_fkey" FOREIGN KEY ("unitId") REFERENCES "Unit" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "OperationalConfirmation" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "code" TEXT NOT NULL,
+    "label" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'Pendiente',
+    "requestedBy" TEXT NOT NULL DEFAULT 'Chofer',
+    "requestedRole" TEXT NOT NULL DEFAULT 'Chofer',
+    "confirmedBy" TEXT,
+    "confirmedRole" TEXT,
+    "notes" TEXT NOT NULL DEFAULT '',
+    "tripId" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "confirmedAt" DATETIME,
+    CONSTRAINT "OperationalConfirmation_tripId_fkey" FOREIGN KEY ("tripId") REFERENCES "Trip" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -229,6 +352,27 @@ CREATE TABLE "MaintenanceJob" (
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
+CREATE INDEX "ConfigOption_kind_sortOrder_idx" ON "ConfigOption"("kind", "sortOrder");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ConfigOption_kind_value_key" ON "ConfigOption"("kind", "value");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "OperationalRule_code_key" ON "OperationalRule"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Role_slug_key" ON "Role"("slug");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Role_name_key" ON "Role"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Permission_key_key" ON "Permission"("key");
+
+-- CreateIndex
+CREATE INDEX "AuditLog_entity_entityId_createdAt_idx" ON "AuditLog"("entity", "entityId", "createdAt");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Driver_slug_key" ON "Driver"("slug");
 
 -- CreateIndex
@@ -254,6 +398,9 @@ CREATE UNIQUE INDEX "Trip_code_key" ON "Trip"("code");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Trip_slug_key" ON "Trip"("slug");
+
+-- CreateIndex
+CREATE INDEX "OperationalConfirmation_tripId_status_idx" ON "OperationalConfirmation"("tripId", "status");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "TripStop_tripId_number_key" ON "TripStop"("tripId", "number");

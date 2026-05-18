@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { demoDataEvent, getDemoLiveData } from "@/lib/demo-store";
 import { fallbackLiveData, type LiveData } from "@/lib/live-data";
 
 export function useLiveData() {
@@ -8,6 +9,14 @@ export function useLiveData() {
 
   useEffect(() => {
     let cancelled = false;
+    let baseData = fallbackLiveData;
+
+    const applyDemoData = () => {
+      if (!cancelled) {
+        setData(getDemoLiveData(baseData));
+      }
+    };
+    const initialDemoSync = window.setTimeout(applyDemoData, 0);
 
     fetch("/api/bootstrap", { cache: "no-store" })
       .then((response) => {
@@ -18,16 +27,21 @@ export function useLiveData() {
         return response.json() as Promise<LiveData>;
       })
       .then((nextData) => {
-        if (!cancelled) {
-          setData(nextData);
-        }
+        baseData = nextData;
+        applyDemoData();
       })
       .catch(() => {
-        // Keep seeded mock data visible if the local database is unavailable.
+        applyDemoData();
       });
+
+    window.addEventListener(demoDataEvent, applyDemoData);
+    window.addEventListener("storage", applyDemoData);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(initialDemoSync);
+      window.removeEventListener(demoDataEvent, applyDemoData);
+      window.removeEventListener("storage", applyDemoData);
     };
   }, []);
 

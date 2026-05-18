@@ -5,14 +5,16 @@ import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Clock3, FileWarning, Truck, User } from "lucide-react";
 import { Field, ModalActions, ModalFrame, SearchBox, SelectField, TextArea } from "@/components/controls";
 import { Badge, Button, Card, PageHeader, StatCard } from "@/components/ui";
-import { createIncidentAction } from "@/app/actions";
 import { useLiveData } from "@/components/use-live-data";
 import type { Incident } from "@/lib/data";
+import type { LiveData } from "@/lib/live-data";
+import { addDemoIncident, saveDemoLiveData } from "@/lib/demo-store";
 
 export default function AlertasPage() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const { incidents } = useLiveData();
+  const data = useLiveData();
+  const { incidents } = data;
 
   const filteredIncidents = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -51,7 +53,7 @@ export default function AlertasPage() {
         ))}
       </section>
 
-      {open ? <NewIncidentModal onClose={() => setOpen(false)} /> : null}
+      {open ? <NewIncidentModal data={data} onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
@@ -90,7 +92,14 @@ function AlertCard({ incident }: { incident: Incident }) {
   );
 }
 
-function NewIncidentModal({ onClose }: { onClose: () => void }) {
+function NewIncidentModal({ data, onClose }: { data: LiveData; onClose: () => void }) {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = addDemoIncident(data, new FormData(event.currentTarget));
+    saveDemoLiveData(result.data, result.label);
+    onClose();
+  };
+
   return (
     <ModalFrame
       title="Nueva incidencia"
@@ -99,7 +108,7 @@ function NewIncidentModal({ onClose }: { onClose: () => void }) {
       size="md"
       footer={<ModalActions onCancel={onClose} confirmLabel="Crear incidencia" submit formId="new-incident-form" />}
     >
-      <form id="new-incident-form" action={createIncidentAction} className="space-y-5">
+      <form id="new-incident-form" onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <SelectField name="priority" label="Prioridad" options={["Crítica", "Alta", "Media"]} required />
           <SelectField name="type" label="Tipo" options={["Documentación", "Demora", "Unidad", "Chofer", "Cliente"]} required />

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -11,7 +10,8 @@ import {
   User,
   Wallet,
 } from "lucide-react";
-import { updateTripStopAction } from "@/app/actions";
+import { confirmOperationalAction, updateTripStopAction } from "@/app/actions";
+import { DemoEntityFallback } from "@/components/demo/DemoEntityFallback";
 import { Badge, Button, LinkButton, PageHeader, Panel, StatCard } from "@/components/ui";
 import {
   money,
@@ -20,6 +20,7 @@ import {
   type Client,
   type TripStop,
 } from "@/lib/data";
+import { prisma } from "@/lib/prisma";
 import { getLiveData } from "@/lib/queries";
 
 export default async function ViajeDetallePage({
@@ -32,7 +33,7 @@ export default async function ViajeDetallePage({
   const trip = data.trips.find((item) => item.slug === id.toLowerCase());
 
   if (!trip) {
-    notFound();
+    return <DemoEntityFallback kind="trip" id={id} />;
   }
 
   const findClient = (slug: string) => data.clients.find((client) => client.slug === slug);
@@ -40,6 +41,11 @@ export default async function ViajeDetallePage({
   const unit = data.units.find((item) => item.id === trip.unitId);
   const deliveredStops = trip.stops.filter((stop) => stop.delivered).length;
   const balance = trip.assignedCash - trip.spentCash;
+  const confirmations = await prisma.operationalConfirmation.findMany({
+    where: { tripId: trip.slug },
+    orderBy: { createdAt: "desc" },
+  });
+  const pendingConfirmations = confirmations.filter((confirmation) => confirmation.status === "Pendiente");
 
   return (
     <div>
@@ -92,6 +98,41 @@ export default async function ViajeDetallePage({
           <Incident text="Sin incidencias críticas" tone="green" />
         </Panel>
       </section>
+
+      {pendingConfirmations.length > 0 ? (
+        <section className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <div className="mb-4 flex items-center gap-3">
+            <AlertTriangle size={20} className="text-amber-700" />
+            <div>
+              <h2 className="font-semibold text-amber-950">Confirmaciones operativas pendientes</h2>
+              <p className="text-sm text-amber-900">Acciones solicitadas por chofer que requieren validación de tráfico/carga.</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {pendingConfirmations.map((confirmation) => (
+              <div key={confirmation.id} className="rounded-lg border border-amber-200 bg-white p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold text-slate-950">{confirmation.label}</p>
+                    <p className="mt-1 text-sm text-slate-500">{confirmation.requestedBy} · {confirmation.createdAt.toLocaleString("es-AR")}</p>
+                    {confirmation.notes ? <p className="mt-1 text-sm text-slate-500">{confirmation.notes}</p> : null}
+                  </div>
+                  <form action={confirmOperationalAction}>
+                    <input type="hidden" name="confirmationId" value={confirmation.id} />
+                    <input type="hidden" name="tripSlug" value={trip.slug} />
+                    <input type="hidden" name="returnTo" value={`/viajes/${trip.slug}`} />
+                    <input type="hidden" name="nextStatus" value="Atracado confirmado" />
+                    <input type="hidden" name="confirmedBy" value="Tráfico" />
+                    <Button type="submit" className="min-h-10">
+                      Confirmar
+                    </Button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="mb-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-5 font-semibold text-slate-950">Paradas del viaje</h2>

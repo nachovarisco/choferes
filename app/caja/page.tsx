@@ -5,13 +5,15 @@ import Link from "next/link";
 import { ArrowDownCircle, ArrowUpCircle, Download, Plus, Receipt, Truck, User, Wallet } from "lucide-react";
 import { Field, ModalActions, ModalFrame, SelectField } from "@/components/controls";
 import { Badge, Button, DataTable, LinkButton, PageHeader, Panel, StatCard } from "@/components/ui";
-import { createCashMovementAction } from "@/app/actions";
 import { useLiveData } from "@/components/use-live-data";
 import { money, type Trip } from "@/lib/data";
+import type { LiveData } from "@/lib/live-data";
+import { addDemoCashMovement, saveDemoLiveData } from "@/lib/demo-store";
 
 export default function CajaPage() {
   const [open, setOpen] = useState(false);
-  const { cashMovements, drivers, trips, units } = useLiveData();
+  const data = useLiveData();
+  const { cashMovements, drivers, trips, units } = data;
   const findDriver = (slug: string) => drivers.find((driver) => driver.slug === slug);
   const findTrip = (slug: string) => trips.find((trip) => trip.slug === slug);
   const findUnit = (id: string) => units.find((unit) => unit.id === id.toLowerCase());
@@ -135,12 +137,19 @@ export default function CajaPage() {
         ]}
       />
 
-      {open ? <NewMovementModal trips={trips} onClose={() => setOpen(false)} /> : null}
+      {open ? <NewMovementModal data={data} trips={trips} onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
 
-function NewMovementModal({ trips, onClose }: { trips: Trip[]; onClose: () => void }) {
+function NewMovementModal({ data, trips, onClose }: { data: LiveData; trips: Trip[]; onClose: () => void }) {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = addDemoCashMovement(data, new FormData(event.currentTarget));
+    saveDemoLiveData(result.data, result.label);
+    onClose();
+  };
+
   return (
     <ModalFrame
       title="Nuevo movimiento"
@@ -149,7 +158,7 @@ function NewMovementModal({ trips, onClose }: { trips: Trip[]; onClose: () => vo
       size="md"
       footer={<ModalActions onCancel={onClose} confirmLabel="Guardar movimiento" submit formId="new-movement-form" />}
     >
-      <form id="new-movement-form" action={createCashMovementAction} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <form id="new-movement-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <SelectField name="type" label="Tipo" options={["Ingreso", "Egreso"]} required />
         <SelectField name="category" label="Categoría" options={["Asignación a chofer", "Peaje", "Combustible", "Gomería", "Repuesto", "Viático"]} required />
         <SelectField name="tripCode" label="Viaje" options={trips.map((trip) => trip.id)} required />

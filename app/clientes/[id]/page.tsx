@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { AlertTriangle, Building2, CalendarClock, CheckCircle2, Clock, Phone, User } from "lucide-react";
+import { DemoEntityFallback } from "@/components/demo/DemoEntityFallback";
 import { Badge, DataTable, PageHeader, Panel, StatCard } from "@/components/ui";
 import { statusTone, tripRoute } from "@/lib/data";
 import { getClientHistoryBySlug, getLiveData } from "@/lib/queries";
@@ -15,7 +15,7 @@ export default async function ClienteDetallePage({
   const client = data.clients.find((item) => item.slug === id.toLowerCase());
 
   if (!client) {
-    notFound();
+    return <DemoEntityFallback kind="client" id={id} />;
   }
 
   const clientTrips = data.trips.filter((trip) => trip.clientSlugs.includes(client.slug));

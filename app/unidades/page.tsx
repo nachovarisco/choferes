@@ -5,14 +5,16 @@ import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Search, Truck, Wrench } from "lucide-react";
 import { Field, ModalActions, ModalFrame, SearchBox, SelectField } from "@/components/controls";
 import { Badge, Button, Card, PageHeader, StatCard } from "@/components/ui";
-import { createUnitAction } from "@/app/actions";
 import { useLiveData } from "@/components/use-live-data";
 import { statusTone, type Unit } from "@/lib/data";
+import type { LiveData } from "@/lib/live-data";
+import { addDemoUnit, saveDemoLiveData } from "@/lib/demo-store";
 
 export default function UnidadesPage() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const { units } = useLiveData();
+  const data = useLiveData();
+  const { units } = data;
 
   const filteredUnits = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -59,12 +61,19 @@ export default function UnidadesPage() {
         ))}
       </section>
 
-      {open ? <NewUnitModal onClose={() => setOpen(false)} /> : null}
+      {open ? <NewUnitModal data={data} onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
 
-function NewUnitModal({ onClose }: { onClose: () => void }) {
+function NewUnitModal({ data, onClose }: { data: LiveData; onClose: () => void }) {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = addDemoUnit(data, new FormData(event.currentTarget));
+    saveDemoLiveData(result.data, result.label);
+    onClose();
+  };
+
   return (
     <ModalFrame
       title="Nueva unidad"
@@ -73,7 +82,7 @@ function NewUnitModal({ onClose }: { onClose: () => void }) {
       size="lg"
       footer={<ModalActions onCancel={onClose} confirmLabel="Guardar unidad" submit formId="new-unit-form" />}
     >
-      <form id="new-unit-form" action={createUnitAction} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <form id="new-unit-form" onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Field name="plate" label="Patente" placeholder="Ej: AH123BC" required />
         <SelectField name="type" label="Tipo" options={["Camión", "Semirremolque", "Utilitario"]} required />
         <Field name="brand" label="Marca" placeholder="Ej: Volvo" required />

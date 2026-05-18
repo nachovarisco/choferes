@@ -13,6 +13,7 @@ import {
 } from "../lib/data";
 
 const prisma = new PrismaClient();
+const tenantId = "tnx";
 
 function json(value: unknown) {
   return JSON.stringify(value);
@@ -24,24 +25,82 @@ function parseDate(value: string) {
 }
 
 async function main() {
+  await prisma.notification.deleteMany();
+  await prisma.device.deleteMany();
+  await prisma.invitation.deleteMany();
+  await prisma.subscription.deleteMany();
+  await prisma.branch.deleteMany();
+  await prisma.auditLog.deleteMany();
   await prisma.cashMovement.deleteMany();
   await prisma.maintenanceJob.deleteMany();
   await prisma.document.deleteMany();
   await prisma.incident.deleteMany();
+  await prisma.operationalConfirmation.deleteMany();
   await prisma.tripTimeline.deleteMany();
   await prisma.tripStop.deleteMany();
   await prisma.tripClient.deleteMany();
   await prisma.trip.deleteMany();
   await prisma.loadOrder.deleteMany();
   await prisma.clientHistory.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.rolePermission.deleteMany();
+  await prisma.permission.deleteMany();
+  await prisma.role.deleteMany();
+  await prisma.operationalRule.deleteMany();
+  await prisma.configOption.deleteMany();
+  await prisma.companySettings.deleteMany();
+  await prisma.tenant.deleteMany();
   await prisma.driver.deleteMany();
   await prisma.unit.deleteMany();
   await prisma.client.deleteMany();
-  await prisma.user.deleteMany();
+
+  await prisma.tenant.create({
+    data: {
+      id: tenantId,
+      code: "TNX-4421",
+      name: "Transporte Nexo",
+      legalName: "Transporte Nexo SRL",
+      plan: "Profesional",
+      status: "Activo",
+    },
+  });
+
+  await prisma.branch.createMany({
+    data: [
+      { tenantId, code: "PAR", name: "Parana", city: "Parana", status: "Activa" },
+      { tenantId, code: "ROS", name: "Rosario", city: "Rosario", status: "Activa" },
+    ],
+  });
+
+  await prisma.subscription.create({
+    data: {
+      tenantId,
+      plan: "Profesional",
+      status: "Activa",
+      usersLimit: 30,
+      driversLimit: 80,
+      unitsLimit: 80,
+      storageLimitMb: 10240,
+    },
+  });
+
+  await prisma.companySettings.create({
+    data: {
+      id: `company-${tenantId}`,
+      tenantId,
+      name: "Transporte Nexo",
+      legalName: "Transporte Nexo SRL",
+      branchName: "Parana",
+      country: "Argentina",
+      currency: "ARS",
+      timezone: "America/Argentina/Buenos_Aires",
+    },
+  });
 
   await prisma.user.create({
     data: {
       id: "usr-ignacio",
+      tenantId,
       name: "Ignacio",
       email: "ignacio@nexo.local",
       passwordHash: await bcrypt.hash("nexo1234", 12),
@@ -54,6 +113,7 @@ async function main() {
     await prisma.unit.create({
       data: {
         id: unit.id,
+        tenantId,
         brand: unit.brand,
         model: unit.model,
         plate: unit.plate,
@@ -72,6 +132,7 @@ async function main() {
     await prisma.driver.create({
       data: {
         id: driver.slug,
+        tenantId,
         slug: driver.slug,
         name: driver.name,
         initials: driver.initials,
@@ -94,6 +155,7 @@ async function main() {
     await prisma.client.create({
       data: {
         id: client.slug,
+        tenantId,
         code: client.code,
         slug: client.slug,
         name: client.name,
@@ -132,6 +194,7 @@ async function main() {
     await prisma.trip.create({
       data: {
         id: trip.slug,
+        tenantId,
         code: trip.id,
         slug: trip.slug,
         origin: trip.origin,
@@ -184,6 +247,7 @@ async function main() {
     await prisma.loadOrder.create({
       data: {
         id: order.slug,
+        tenantId,
         code: order.code,
         slug: order.slug,
         clientId: order.clientSlug,
@@ -203,6 +267,7 @@ async function main() {
     await prisma.document.create({
       data: {
         id: document.id,
+        tenantId,
         name: document.name,
         owner: document.owner,
         association: document.association,
@@ -217,6 +282,7 @@ async function main() {
     await prisma.incident.create({
       data: {
         id: incident.id,
+        tenantId,
         type: incident.type,
         title: incident.title,
         detail: incident.detail,
@@ -230,6 +296,7 @@ async function main() {
     await prisma.cashMovement.create({
       data: {
         id: movement.id,
+        tenantId,
         date: parseDate(movement.date),
         type: movement.type,
         category: movement.category,
@@ -247,6 +314,7 @@ async function main() {
     await prisma.maintenanceJob.create({
       data: {
         id: job.id,
+        tenantId,
         unitId: job.unitId,
         issue: job.issue,
         status: job.status,
@@ -255,6 +323,66 @@ async function main() {
       },
     });
   }
+
+  await prisma.invitation.createMany({
+    data: [
+      {
+        tenantId,
+        code: "TNX-ADM-001",
+        email: "admin.demo@nexo.local",
+        role: "administrativo",
+        status: "Pendiente",
+      },
+      {
+        tenantId,
+        code: "TNX-CHF-001",
+        phone: "3435551200",
+        role: "chofer",
+        status: "Pendiente",
+      },
+    ],
+  });
+
+  await prisma.device.createMany({
+    data: [
+      {
+        tenantId,
+        userId: "usr-ignacio",
+        label: "MacBook Operaciones",
+        platform: "Web",
+        status: "Activo",
+        lastSeenAt: new Date(),
+      },
+      {
+        tenantId,
+        driverId: "juan-perez",
+        label: "Celular Juan Perez",
+        platform: "PWA Android",
+        status: "Activo",
+        lastSeenAt: new Date(),
+      },
+    ],
+  });
+
+  await prisma.notification.createMany({
+    data: [
+      {
+        tenantId,
+        driverId: "juan-perez",
+        title: "Tenes un viaje asignado",
+        body: "VJ-000124 listo para confirmar recepcion.",
+        priority: "Alta",
+        status: "Pendiente",
+      },
+      {
+        tenantId,
+        title: "Documento por vencer",
+        body: "Licencia profesional de Juan Perez vence pronto.",
+        priority: "Media",
+        status: "Pendiente",
+      },
+    ],
+  });
 }
 
 main()

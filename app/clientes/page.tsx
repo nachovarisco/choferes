@@ -6,9 +6,10 @@ import { useSearchParams } from "next/navigation";
 import { AlertTriangle, Building2, CheckCircle2, Clock, FileText } from "lucide-react";
 import { Field, ModalActions, ModalFrame, SearchBox, SelectField, TextArea } from "@/components/controls";
 import { Badge, Button, Card, PageHeader, StatCard } from "@/components/ui";
-import { createClientAction } from "@/app/actions";
 import { useLiveData } from "@/components/use-live-data";
 import type { Client } from "@/lib/data";
+import type { LiveData } from "@/lib/live-data";
+import { addDemoClient, saveDemoLiveData } from "@/lib/demo-store";
 
 export default function ClientesPage() {
   const searchParams = useSearchParams();
@@ -16,7 +17,8 @@ export default function ClientesPage() {
   const initialCode = searchParams.get("codigo") ?? "";
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(initialNewClient);
-  const { clients } = useLiveData();
+  const data = useLiveData();
+  const { clients } = data;
 
   const normalized = query.trim().toLowerCase();
   const filteredClients = normalized
@@ -58,12 +60,19 @@ export default function ClientesPage() {
         ))}
       </section>
 
-      {open ? <NewClientModal defaultCode={initialCode} onClose={() => setOpen(false)} /> : null}
+      {open ? <NewClientModal data={data} defaultCode={initialCode} onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
 
-function NewClientModal({ defaultCode, onClose }: { defaultCode?: string; onClose: () => void }) {
+function NewClientModal({ data, defaultCode, onClose }: { data: LiveData; defaultCode?: string; onClose: () => void }) {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = addDemoClient(data, new FormData(event.currentTarget));
+    saveDemoLiveData(result.data, result.label);
+    onClose();
+  };
+
   return (
     <ModalFrame
       title="Nuevo cliente"
@@ -72,7 +81,7 @@ function NewClientModal({ defaultCode, onClose }: { defaultCode?: string; onClos
       size="lg"
       footer={<ModalActions onCancel={onClose} confirmLabel="Guardar cliente" submit formId="new-client-form" />}
     >
-      <form id="new-client-form" action={createClientAction} className="space-y-6">
+      <form id="new-client-form" onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Field name="name" label="Razón social / nombre" placeholder="Ej: Cliente SA" required />
           <Field name="code" label="Código de cliente" placeholder="Ej: CLI-0006 o 6" defaultValue={defaultCode} />

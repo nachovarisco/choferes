@@ -7,19 +7,229 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Tenant {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  legalName   String    @default("")
+  taxId       String    @default("")
+  plan        String    @default("Profesional")
+  status      String    @default("Activo")
+  trialEndsAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  tenantId  String   @default("tnx")
+  name      String
+  code      String
+  address   String   @default("")
+  city      String   @default("")
+  status    String   @default("Activa")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+}
+
+model Subscription {
+  id               String    @id @default(cuid())
+  tenantId         String    @unique @default("tnx")
+  plan             String    @default("Profesional")
+  status           String    @default("Activa")
+  usersLimit       Int       @default(30)
+  driversLimit     Int       @default(80)
+  unitsLimit       Int       @default(80)
+  storageLimitMb   Int       @default(10240)
+  currentPeriodEnd DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model Invitation {
+  id         String    @id @default(cuid())
+  tenantId   String    @default("tnx")
+  code       String
+  email      String    @default("")
+  phone      String    @default("")
+  role       String    @default("chofer")
+  status     String    @default("Pendiente")
+  expiresAt  DateTime?
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+}
+
+model Device {
+  id         String    @id @default(cuid())
+  tenantId   String    @default("tnx")
+  userId     String?
+  driverId   String?
+  label      String
+  platform   String    @default("PWA")
+  pushToken  String?
+  status     String    @default("Activo")
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, driverId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  tenantId  String    @default("tnx")
+  userId    String?
+  driverId  String?
+  channel   String    @default("in-app")
+  title     String
+  body      String
+  status    String    @default("Pendiente")
+  priority  String    @default("Media")
+  metadata  String    @default("{}")
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  @@index([tenantId, status, createdAt])
+}
+
 model User {
   id           String   @id @default(cuid())
+  tenantId     String   @default("tnx")
   name         String
   email        String   @unique
   passwordHash String
   role         String   @default("ADMIN")
+  roleId       String?
+  roleRef      Role?    @relation(fields: [roleId], references: [id])
+  status       String   @default("Activo")
+  phone        String   @default("")
+  driverId     String?
   branch       String   @default("Paraná")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@index([tenantId, status])
+}
+
+model CompanySettings {
+  id              String   @id @default("default")
+  tenantId        String   @unique @default("tnx")
+  name            String   @default("Transporte Nexo")
+  legalName       String   @default("Transporte Nexo SRL")
+  taxId           String   @default("")
+  phone           String   @default("")
+  email           String   @default("")
+  address         String   @default("")
+  branchName      String   @default("Parana")
+  country         String   @default("Argentina")
+  currency        String   @default("ARS")
+  timezone        String   @default("America/Argentina/Buenos_Aires")
+  website         String   @default("")
+  logoUrl         String?
+  primaryColor    String   @default("#0f172a")
+  accentColor     String   @default("#2563eb")
+  backgroundColor String   @default("#f1f5f9")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ConfigOption {
+  id                       String   @id @default(cuid())
+  tenantId                 String   @default("tnx")
+  kind                     String
+  label                    String
+  value                    String
+  description              String   @default("")
+  color                    String   @default("slate")
+  sortOrder                Int      @default(0)
+  active                   Boolean  @default(true)
+  requiresDoubleValidation Boolean  @default(false)
+  blocksOperation          Boolean  @default(false)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@unique([kind, value])
+  @@index([tenantId, kind, sortOrder])
+  @@index([kind, sortOrder])
+}
+
+model OperationalRule {
+  id               String   @id @default(cuid())
+  tenantId         String   @default("tnx")
+  code             String   @unique
+  name             String
+  description      String
+  appliesTo        String   @default("Viajes")
+  trigger          String
+  action           String
+  severity         String   @default("Media")
+  enabled          Boolean  @default(true)
+  requiresAdmin    Boolean  @default(false)
+  doubleValidation Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  name        String           @unique
+  description String
+  level       Int              @default(1)
+  isSystem    Boolean          @default(false)
+  users       User[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  module      String
+  action      String
+  description String
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String   @default("tnx")
+  actorName String   @default("Sistema")
+  actorRole String   @default("ADMIN")
+  entity    String
+  entityId  String
+  action    String
+  detail    String
+  metadata  String   @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([entity, entityId, createdAt])
 }
 
 model Driver {
   id             String         @id @default(cuid())
+  tenantId       String         @default("tnx")
   slug           String         @unique
   name           String
   initials       String
@@ -39,10 +249,13 @@ model Driver {
   movements      CashMovement[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+
+  @@index([tenantId, status])
 }
 
 model Unit {
   id             String           @id @default(cuid())
+  tenantId       String           @default("tnx")
   brand          String
   model          String
   plate          String           @unique
@@ -59,30 +272,35 @@ model Unit {
   maintenance    MaintenanceJob[]
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+
+  @@index([tenantId, status])
 }
 
 model Client {
-  id             String       @id @default(cuid())
-  code           String       @unique
-  slug           String       @unique
+  id             String          @id @default(cuid())
+  tenantId       String          @default("tnx")
+  code           String          @unique
+  slug           String          @unique
   name           String
   contact        String
   phone          String
   reception      String
-  tripsThisMonth Int          @default(0)
+  tripsThisMonth Int             @default(0)
   status         String
-  requiresTurn   Boolean      @default(false)
-  tags           String       @default("[]")
-  requirements   String       @default("[]")
-  delayAverage   String       @default("0m")
-  openIncidents  Int          @default(0)
-  mainTrips      Trip[]       @relation("MainClientTrips")
+  requiresTurn   Boolean         @default(false)
+  tags           String          @default("[]")
+  requirements   String          @default("[]")
+  delayAverage   String          @default("0m")
+  openIncidents  Int             @default(0)
+  mainTrips      Trip[]          @relation("MainClientTrips")
   tripClients    TripClient[]
   stops          TripStop[]
   orders         LoadOrder[]
   histories      ClientHistory[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([tenantId, status])
 }
 
 model ClientHistory {
@@ -98,29 +316,51 @@ model ClientHistory {
 }
 
 model Trip {
-  id             String         @id @default(cuid())
-  code           String         @unique
-  slug           String         @unique
-  origin         String
-  destination    String
-  status         String
-  alert          String         @default("Sin alertas")
-  date           DateTime
-  assignedCash   Int            @default(0)
-  spentCash      Int            @default(0)
-  mainClientId   String
-  mainClient     Client         @relation("MainClientTrips", fields: [mainClientId], references: [id])
-  driverId       String?
-  driver         Driver?        @relation(fields: [driverId], references: [id])
-  unitId         String?
-  unit           Unit?          @relation(fields: [unitId], references: [id])
-  clients        TripClient[]
-  stops          TripStop[]
-  timeline       TripTimeline[]
-  movements      CashMovement[]
-  documents      Document[]
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id            String                    @id @default(cuid())
+  tenantId      String                    @default("tnx")
+  code          String                    @unique
+  slug          String                    @unique
+  origin        String
+  destination   String
+  status        String
+  alert         String                    @default("Sin alertas")
+  date          DateTime
+  assignedCash  Int                       @default(0)
+  spentCash     Int                       @default(0)
+  mainClientId  String
+  mainClient    Client                    @relation("MainClientTrips", fields: [mainClientId], references: [id])
+  driverId      String?
+  driver        Driver?                   @relation(fields: [driverId], references: [id])
+  unitId        String?
+  unit          Unit?                     @relation(fields: [unitId], references: [id])
+  clients       TripClient[]
+  stops         TripStop[]
+  timeline      TripTimeline[]
+  movements     CashMovement[]
+  documents     Document[]
+  confirmations OperationalConfirmation[]
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+
+  @@index([tenantId, status, date])
+}
+
+model OperationalConfirmation {
+  id            String    @id @default(cuid())
+  code          String
+  label         String
+  status        String    @default("Pendiente")
+  requestedBy   String    @default("Chofer")
+  requestedRole String    @default("Chofer")
+  confirmedBy   String?
+  confirmedRole String?
+  notes         String    @default("")
+  tripId        String
+  trip          Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+  confirmedAt   DateTime?
+
+  @@index([tripId, status])
 }
 
 model TripClient {
@@ -133,25 +373,25 @@ model TripClient {
 }
 
 model TripStop {
-  id         String   @id @default(cuid())
-  number     Int
-  clientCode String   @default("")
-  clientName String   @default("")
-  contact    String   @default("")
-  reception  String   @default("")
+  id           String  @id @default(cuid())
+  number       Int
+  clientCode   String  @default("")
+  clientName   String  @default("")
+  contact      String  @default("")
+  reception    String  @default("")
   requiresTurn Boolean @default(false)
-  turnStatus String   @default("No requiere turno")
-  address    String
-  goods      String
-  status     String
-  note       String
-  delivered  Boolean  @default(false)
-  alert      String?
-  returnInfo String?
-  tripId     String
-  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  clientId   String
-  client     Client   @relation(fields: [clientId], references: [id])
+  turnStatus   String  @default("No requiere turno")
+  address      String
+  goods        String
+  status       String
+  note         String
+  delivered    Boolean @default(false)
+  alert        String?
+  returnInfo   String?
+  tripId       String
+  trip         Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  clientId     String
+  client       Client  @relation(fields: [clientId], references: [id])
 
   @@unique([tripId, number])
 }
@@ -168,6 +408,7 @@ model TripTimeline {
 
 model LoadOrder {
   id          String   @id @default(cuid())
+  tenantId    String   @default("tnx")
   code        String   @unique
   slug        String   @unique
   load        String
@@ -186,6 +427,7 @@ model LoadOrder {
 
 model Document {
   id          String   @id
+  tenantId    String   @default("tnx")
   name        String
   owner       String
   association String
@@ -201,6 +443,7 @@ model Document {
 
 model Incident {
   id        String   @id
+  tenantId  String   @default("tnx")
   type      String
   title     String
   detail    String
@@ -212,6 +455,7 @@ model Incident {
 
 model CashMovement {
   id        String   @id
+  tenantId  String   @default("tnx")
   date      DateTime
   type      String
   category  String
@@ -230,6 +474,7 @@ model CashMovement {
 
 model MaintenanceJob {
   id        String   @id
+  tenantId  String   @default("tnx")
   issue     String
   status    String
   next      String

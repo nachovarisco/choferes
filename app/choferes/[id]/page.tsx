@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Clock, FileText, Phone, Shield, Truck, User } from "lucide-react";
+import { DemoEntityFallback } from "@/components/demo/DemoEntityFallback";
 import { Badge, DataTable, PageHeader, Panel, StatCard } from "@/components/ui";
 import { statusTone, tripRoute } from "@/lib/data";
 import { getLiveData } from "@/lib/queries";
@@ -15,7 +15,7 @@ export default async function ChoferDetallePage({
   const driver = data.drivers.find((item) => item.slug === id.toLowerCase());
 
   if (!driver) {
-    notFound();
+    return <DemoEntityFallback kind="driver" id={id} />;
   }
 
   const unit = driver.unitId ? data.units.find((item) => item.id === driver.unitId) : undefined;

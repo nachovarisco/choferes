@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { ensureTenantDefaults, getMockSession } from "@/lib/session";
 import { fallbackLiveData, type LiveData } from "@/lib/live-data";
 import type {
   CashMovement,
@@ -242,6 +243,9 @@ function toMaintenanceJob(job: Awaited<ReturnType<typeof prisma.maintenanceJob.f
 
 export const getLiveData = cache(async (): Promise<LiveData> => {
   try {
+    await ensureTenantDefaults();
+    const session = await getMockSession();
+    const tenantFilter = { tenantId: session.tenantId };
     const [
       drivers,
       units,
@@ -252,14 +256,18 @@ export const getLiveData = cache(async (): Promise<LiveData> => {
       incidents,
       cashMovements,
       maintenanceJobs,
+      companySettings,
+      currentUser,
     ] = await Promise.all([
-      prisma.driver.findMany({ orderBy: { name: "asc" } }),
+      prisma.driver.findMany({ where: tenantFilter, orderBy: { name: "asc" } }),
       prisma.unit.findMany({
+        where: tenantFilter,
         include: { assignedDriver: true },
         orderBy: { plate: "asc" },
       }),
-      prisma.client.findMany({ orderBy: { code: "asc" } }),
+      prisma.client.findMany({ where: tenantFilter, orderBy: { code: "asc" } }),
       prisma.trip.findMany({
+        where: tenantFilter,
         include: {
           clients: { include: { client: true } },
           driver: true,
@@ -271,16 +279,30 @@ export const getLiveData = cache(async (): Promise<LiveData> => {
         orderBy: { date: "desc" },
       }),
       prisma.loadOrder.findMany({
+        where: tenantFilter,
         include: { client: true },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.document.findMany({ orderBy: { updatedAt: "desc" } }),
-      prisma.incident.findMany({ orderBy: { updatedAt: "desc" } }),
+      prisma.document.findMany({ where: tenantFilter, orderBy: { updatedAt: "desc" } }),
+      prisma.incident.findMany({ where: tenantFilter, orderBy: { updatedAt: "desc" } }),
       prisma.cashMovement.findMany({
+        where: tenantFilter,
         include: { driver: true, trip: true, unit: true },
         orderBy: { date: "desc" },
       }),
-      prisma.maintenanceJob.findMany({ orderBy: { updatedAt: "desc" } }),
+      prisma.maintenanceJob.findMany({ where: tenantFilter, orderBy: { updatedAt: "desc" } }),
+      prisma.companySettings.findFirst({ where: tenantFilter }),
+      prisma.user.findFirst({
+        where: { tenantId: session.tenantId },
+        include: {
+          roleRef: {
+            include: {
+              permissions: { include: { permission: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      }),
     ]);
 
     if (clients.length === 0 && trips.length === 0) {
@@ -290,6 +312,26 @@ export const getLiveData = cache(async (): Promise<LiveData> => {
     return {
       cashMovements: cashMovements.map(toCashMovement),
       clients: clients.map(toClient),
+      company: companySettings
+        ? {
+            name: companySettings.name,
+            legalName: companySettings.legalName,
+            branchName: companySettings.branchName,
+            logoUrl: companySettings.logoUrl ?? undefined,
+            primaryColor: companySettings.primaryColor,
+            accentColor: companySettings.accentColor,
+            backgroundColor: companySettings.backgroundColor,
+          }
+        : fallbackLiveData.company,
+      currentUser: currentUser
+        ? {
+            name: currentUser.name,
+            email: currentUser.email,
+            roleName: currentUser.roleRef?.name ?? currentUser.role,
+            roleSlug: currentUser.roleRef?.slug ?? currentUser.role.toLowerCase(),
+            permissions: currentUser.roleRef?.permissions.map((item) => item.permission.key) ?? ["*"],
+          }
+        : fallbackLiveData.currentUser,
       documents: documents.map(toDocument),
       drivers: drivers.map(toDriver),
       incidents: incidents.map(toIncident),
@@ -331,8 +373,9 @@ export async function getClientBySlug(slug: string) {
 
 export async function getClientHistoryBySlug(slug: string): Promise<ClientHistory[]> {
   try {
+    const session = await getMockSession();
     const client = await prisma.client.findFirst({
-      where: { slug: slug.toLowerCase() },
+      where: { slug: slug.toLowerCase(), tenantId: session.tenantId },
       include: {
         histories: {
           orderBy: { createdAt: "desc" },

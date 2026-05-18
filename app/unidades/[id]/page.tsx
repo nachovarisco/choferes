@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Clock, FileText, Shield, Truck, User } from "lucide-react";
+import { DemoEntityFallback } from "@/components/demo/DemoEntityFallback";
 import { Badge, DataTable, PageHeader, Panel, StatCard } from "@/components/ui";
 import { statusTone, tripRoute } from "@/lib/data";
 import { getLiveData } from "@/lib/queries";
@@ -15,7 +15,7 @@ export default async function UnidadDetallePage({
   const unit = data.units.find((item) => item.id === id.toLowerCase());
 
   if (!unit) {
-    notFound();
+    return <DemoEntityFallback kind="unit" id={id} />;
   }
 
   const findDriver = (slug: string) => data.drivers.find((driver) => driver.slug === slug);

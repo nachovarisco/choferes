@@ -5,14 +5,16 @@ import Link from "next/link";
 import { AlertTriangle, CheckCircle2, FileText, Upload } from "lucide-react";
 import { Field, ModalActions, ModalFrame, SearchBox, SelectField, TextArea } from "@/components/controls";
 import { Badge, Button, DataTable, PageHeader, StatCard } from "@/components/ui";
-import { createDocumentAction } from "@/app/actions";
 import { useLiveData } from "@/components/use-live-data";
 import { documentTypes, statusTone } from "@/lib/data";
+import type { LiveData } from "@/lib/live-data";
+import { addDemoDocument, saveDemoLiveData } from "@/lib/demo-store";
 
 export default function DocumentosPage() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const { documents } = useLiveData();
+  const data = useLiveData();
+  const { documents } = data;
 
   const filteredDocuments = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -100,12 +102,19 @@ export default function DocumentosPage() {
         })}
       </section>
 
-      {open ? <UploadDocumentModal onClose={() => setOpen(false)} /> : null}
+      {open ? <UploadDocumentModal data={data} onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
 
-function UploadDocumentModal({ onClose }: { onClose: () => void }) {
+function UploadDocumentModal({ data, onClose }: { data: LiveData; onClose: () => void }) {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = addDemoDocument(data, new FormData(event.currentTarget));
+    saveDemoLiveData(result.data, result.label);
+    onClose();
+  };
+
   return (
     <ModalFrame
       title="Subir documento"
@@ -113,7 +122,7 @@ function UploadDocumentModal({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       footer={<ModalActions onCancel={onClose} confirmLabel="Guardar documento" submit formId="new-document-form" />}
     >
-      <form id="new-document-form" action={createDocumentAction} className="space-y-8">
+      <form id="new-document-form" onSubmit={handleSubmit} className="space-y-8">
         <section>
           <h3 className="mb-4 font-semibold text-slate-950">Datos del documento</h3>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,33 +10,43 @@ import {
   Bell,
   Building2,
   ClipboardList,
+  CreditCard,
   FileText,
   LayoutDashboard,
+  ListChecks,
   Menu,
+  Route,
   Search,
   Settings,
+  Smartphone,
   Truck,
   Users,
   Wrench,
   Wallet,
 } from "lucide-react";
 import { useLiveData } from "@/components/use-live-data";
-import type { LiveData } from "@/lib/live-data";
+import { clearDemoLiveData, demoDataEvent, demoSummary } from "@/lib/demo-store";
+import type { CompanyBrand, LiveData } from "@/lib/live-data";
 import { cn } from "./ui";
 
 const menu = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Viajes", href: "/viajes", icon: Truck },
-  { name: "Órdenes de carga", href: "/ordenes", icon: ClipboardList },
-  { name: "Choferes", href: "/choferes", icon: Users },
-  { name: "Unidades", href: "/unidades", icon: Building2 },
-  { name: "Clientes", href: "/clientes", icon: Building2 },
-  { name: "Documentos", href: "/documentos", icon: FileText },
-  { name: "Incidencias", href: "/alertas", icon: AlertTriangle },
-  { name: "Reportes", href: "/reportes", icon: BarChart3 },
-  { name: "Caja", href: "/caja", icon: Wallet },
-  { name: "Mantenimiento", href: "/mantenimiento", icon: Wrench },
-  { name: "Configuración", href: "/configuracion", icon: Settings },
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
+  { name: "Onboarding", href: "/onboarding", icon: ClipboardList, permission: "settings.view" },
+  { name: "Demo V1", href: "/demo-operativa", icon: Route, permission: "settings.view" },
+  { name: "Portal Chofer", href: "/chofer", icon: Smartphone, permission: "driver_app.use" },
+  { name: "Viajes", href: "/viajes", icon: Truck, permission: "trips.view" },
+  { name: "Ordenes de carga", href: "/ordenes", icon: ClipboardList, permission: "orders.manage" },
+  { name: "Choferes", href: "/choferes", icon: Users, permission: "drivers.manage" },
+  { name: "Unidades", href: "/unidades", icon: Building2, permission: "units.manage" },
+  { name: "Clientes", href: "/clientes", icon: Building2, permission: "clients.manage" },
+  { name: "Documentos", href: "/documentos", icon: FileText, permission: "documents.manage" },
+  { name: "Incidencias", href: "/alertas", icon: AlertTriangle, permission: "incidents.manage" },
+  { name: "Reportes", href: "/reportes", icon: BarChart3, permission: "reports.view" },
+  { name: "Caja", href: "/caja", icon: Wallet, permission: "cash.view" },
+  { name: "Mantenimiento", href: "/mantenimiento", icon: Wrench, permission: "maintenance.view" },
+  { name: "Planes SaaS", href: "/planes", icon: CreditCard, permission: "settings.view" },
+  { name: "Configuracion", href: "/configuracion", icon: Settings, permission: "settings.view" },
+  { name: "Estado V1", href: "/estado-v1", icon: ListChecks, permission: "settings.view" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -49,29 +60,68 @@ export default function AppShell({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [brandOverride, setBrandOverride] = useState<CompanyBrand | null>(null);
+  const [demoMode, setDemoMode] = useState<ReturnType<typeof demoSummary>>(null);
   const data = useLiveData();
+  const company = brandOverride ?? data.company;
   const openIncidents = data.incidents.filter((incident) => incident.type !== "Resuelta").length;
 
+  useEffect(() => {
+    function loadDemoBrand() {
+      try {
+        const raw = window.localStorage.getItem("nexo-demo-brand");
+        setBrandOverride(raw ? { ...data.company, ...(JSON.parse(raw) as Partial<CompanyBrand>) } : null);
+      } catch {
+        setBrandOverride(null);
+      }
+    }
+
+    loadDemoBrand();
+    window.addEventListener("nexo-brand-updated", loadDemoBrand);
+
+    return () => window.removeEventListener("nexo-brand-updated", loadDemoBrand);
+  }, [data.company]);
+
+  useEffect(() => {
+    const loadDemoMode = () => setDemoMode(demoSummary());
+    const timeoutId = window.setTimeout(loadDemoMode, 0);
+
+    window.addEventListener(demoDataEvent, loadDemoMode);
+    window.addEventListener("storage", loadDemoMode);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener(demoDataEvent, loadDemoMode);
+      window.removeEventListener("storage", loadDemoMode);
+    };
+  }, []);
+
+  if (pathname.startsWith("/chofer") || pathname.startsWith("/app-chofer")) {
+    return <main className="min-h-screen bg-slate-950 text-white">{children}</main>;
+  }
+
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 md:flex">
+    <div className="min-h-screen text-slate-900 md:flex" style={{ backgroundColor: company.backgroundColor }}>
       {mobileOpen ? (
         <div className="fixed inset-0 z-40 md:hidden">
           <button
             type="button"
-            aria-label="Cerrar menú"
+            aria-label="Cerrar menu"
             className="absolute inset-0 bg-black/40"
             onClick={() => setMobileOpen(false)}
           />
 
           <Sidebar
             pathname={pathname}
+            company={company}
+            permissions={data.currentUser.permissions}
             onNavigate={() => setMobileOpen(false)}
             className="absolute left-0 top-0 h-full w-72"
           />
         </div>
       ) : null}
 
-      <Sidebar pathname={pathname} className="sticky top-0 hidden h-screen w-64 shrink-0 md:flex" />
+      <Sidebar pathname={pathname} company={company} permissions={data.currentUser.permissions} className="sticky top-0 hidden h-screen w-64 shrink-0 md:flex" />
 
       <main className="min-w-0 flex-1">
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-slate-100/90 backdrop-blur">
@@ -80,7 +130,7 @@ export default function AppShell({
               <button
                 type="button"
                 onClick={() => setMobileOpen(true)}
-                aria-label="Abrir menú"
+                aria-label="Abrir menu"
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white md:hidden"
               >
                 <Menu size={20} />
@@ -91,11 +141,11 @@ export default function AppShell({
 
             <div className="flex shrink-0 items-center gap-3">
               <div className="hidden rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 sm:block">
-                Sucursal Paraná
+                Sucursal {company.branchName}
               </div>
 
               <Link
-                href="/alertas"
+                href="/notificaciones"
                 aria-label="Notificaciones"
                 className="relative flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50"
               >
@@ -111,8 +161,8 @@ export default function AppShell({
                 </div>
 
                 <div className="hidden sm:block">
-                  <p className="text-sm font-medium text-slate-950">Ignacio</p>
-                  <p className="text-xs text-slate-500">Administrador</p>
+                  <p className="text-sm font-medium text-slate-950">{data.currentUser.name}</p>
+                  <p className="text-xs text-slate-500">{data.currentUser.roleName}</p>
                 </div>
               </Link>
             </div>
@@ -123,7 +173,24 @@ export default function AppShell({
           </div>
         </header>
 
-        <div className="p-4 md:p-8">{children}</div>
+        <div className="p-4 md:p-8">
+          {demoMode ? (
+            <div className="mb-5 flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="font-semibold">Modo demo local activo</p>
+                <p className="mt-1 text-blue-800">{demoMode.events[0] ?? "Datos guardados localmente para probar la Fase 1."}</p>
+              </div>
+              <button
+                type="button"
+                onClick={clearDemoLiveData}
+                className="inline-flex min-h-10 items-center justify-center rounded-lg border border-blue-200 bg-white px-3 py-2 font-medium text-blue-900 hover:bg-blue-100"
+              >
+                Reiniciar demo
+              </button>
+            </div>
+          ) : null}
+          {children}
+        </div>
       </main>
     </div>
   );
@@ -143,37 +210,37 @@ function GlobalSearch({ data, className }: { data: LiveData; className?: string 
         href: `/viajes/${trip.slug}`,
         title: trip.id,
         eyebrow: "Viaje",
-        body: `${trip.origin} → ${trip.destination} · ${trip.clientSlugs.map(clientName).join(" + ")}`,
+        body: `${trip.origin} -> ${trip.destination} - ${trip.clientSlugs.map(clientName).join(" + ")}`,
       })),
       ...data.orders.map((order) => ({
         href: `/ordenes/${order.slug}`,
         title: order.code,
         eyebrow: "Orden",
-        body: `${clientName(order.clientSlug)} · ${order.load}`,
+        body: `${clientName(order.clientSlug)} - ${order.load}`,
       })),
       ...data.drivers.map((driver) => ({
         href: `/choferes/${driver.slug}`,
         title: driver.name,
         eyebrow: "Chofer",
-        body: `${driver.status} · ${driver.phone}`,
+        body: `${driver.status} - ${driver.phone}`,
       })),
       ...data.units.map((unit) => ({
         href: `/unidades/${unit.id}`,
         title: unit.plate,
         eyebrow: "Unidad",
-        body: `${unit.brand} ${unit.model} · ${unit.status}`,
+        body: `${unit.brand} ${unit.model} - ${unit.status}`,
       })),
       ...data.clients.map((client) => ({
         href: `/clientes/${client.slug}`,
-        title: `${client.code} · ${client.name}`,
+        title: `${client.code} - ${client.name}`,
         eyebrow: "Cliente",
-        body: `${client.contact} · ${client.status}`,
+        body: `${client.contact} - ${client.status}`,
       })),
       ...data.documents.map((document) => ({
         href: "/documentos",
         title: document.name,
         eyebrow: "Documento",
-        body: `${document.owner} · ${document.status}`,
+        body: `${document.owner} - ${document.status}`,
       })),
     ];
 
@@ -215,24 +282,64 @@ function GlobalSearch({ data, className }: { data: LiveData; className?: string 
 }
 
 function Sidebar({
+  company,
+  permissions,
   pathname,
   onNavigate,
   className,
 }: {
+  company: CompanyBrand;
+  permissions: string[];
   pathname: string;
   onNavigate?: () => void;
   className?: string;
 }) {
+  const canUse = (permission: string) => permissions.includes("*") || permissions.includes(permission);
+  const logoIsDataUrl = company.logoUrl?.startsWith("data:");
+
   return (
-    <aside className={cn("flex flex-col bg-slate-950 p-5 text-white", className)}>
-      <div className="mb-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-300">Transporte</p>
-        <h1 className="mt-1 text-2xl font-black tracking-tight">NEXO</h1>
-        <p className="mt-1 text-xs text-slate-400">Sistema logístico</p>
+    <aside
+      className={cn("flex flex-col border-r border-white/10 p-5 text-white shadow-2xl", className)}
+      style={{ backgroundColor: company.primaryColor }}
+    >
+      <div className="mb-5 rounded-2xl border border-white/10 bg-white/[0.06] p-4 shadow-xl">
+        <div className="relative mb-3 flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-white/10 ring-1 ring-white/10">
+          {company.logoUrl ? (
+            logoIsDataUrl ? (
+              <span
+                role="img"
+                aria-label={company.name}
+                className="h-full w-full bg-contain bg-center bg-no-repeat"
+                style={{ backgroundImage: `url(${company.logoUrl})` }}
+              />
+            ) : (
+              <Image src={company.logoUrl} alt={company.name} fill sizes="44px" className="object-contain p-1.5" />
+            )
+          ) : (
+            <span className="text-sm font-black">{company.name.slice(0, 2).toUpperCase()}</span>
+          )}
+        </div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-200">Logistica OS</p>
+        <h1 className="mt-1 text-xl font-black tracking-tight">{company.name}</h1>
+        <p className="mt-1 text-xs text-slate-300">Operacion, flota y choferes</p>
       </div>
 
-      <nav className="flex-1 space-y-1">
-        {menu.map((item) => {
+      {canUse("driver_app.use") ? (
+        <Link
+          href="/chofer"
+          onClick={onNavigate}
+          className="mb-4 flex items-center justify-between rounded-2xl border border-blue-200/20 bg-white/10 p-4 text-sm font-semibold text-white shadow-lg hover:bg-white/15"
+        >
+          <span className="flex items-center gap-3">
+            <Smartphone size={18} />
+            Abrir Portal Chofer
+          </span>
+          <span className="text-xs text-blue-100">Mobile</span>
+        </Link>
+      ) : null}
+
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+        {menu.filter((item) => canUse(item.permission)).map((item) => {
           const Icon = item.icon;
           const active = isActive(pathname, item.href);
 
@@ -242,9 +349,10 @@ function Sidebar({
               href={item.href}
               onClick={onNavigate}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition",
-                active ? "bg-blue-600 text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white",
+                "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition",
+                active ? "text-white shadow-lg" : "text-slate-300 hover:bg-white/10 hover:text-white",
               )}
+              style={active ? { backgroundColor: company.accentColor } : undefined}
             >
               <Icon size={18} />
               {item.name}
@@ -253,11 +361,11 @@ function Sidebar({
         })}
       </nav>
 
-      <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
-        <p className="text-sm font-semibold">Transporte Nexo SRL</p>
+      <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+        <p className="text-sm font-semibold">{company.legalName}</p>
         <p className="mt-1 text-xs text-slate-400">Plan Profesional</p>
 
-        <div className="mt-4 h-2 w-full rounded-full bg-slate-800">
+        <div className="mt-4 h-2 w-full rounded-full bg-white/10">
           <div className="h-2 w-2/3 rounded-full bg-blue-500" />
         </div>
 
@@ -266,3 +374,4 @@ function Sidebar({
     </aside>
   );
 }
+

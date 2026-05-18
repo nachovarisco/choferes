@@ -2,11 +2,41 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import bcrypt from "bcryptjs";
 import ExcelJS from "exceljs";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { audit, ensureConfigurationDefaults } from "@/lib/configuration";
 import { prisma } from "@/lib/prisma";
+import { ensureTenantDefaults, getMockSession } from "@/lib/session";
+
+async function currentTenantId() {
+  await ensureTenantDefaults();
+  return (await getMockSession()).tenantId;
+}
+
+export async function switchMockSessionAction(formData: FormData) {
+  const tenantId = requiredString(formData, "tenantId") || "tnx";
+  const userId = requiredString(formData, "userId") || "usr-ignacio";
+  const returnTo = requiredString(formData, "returnTo") || "/dashboard";
+  const cookieStore = await cookies();
+
+  cookieStore.set("nexo-tenant-id", tenantId, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+  });
+  cookieStore.set("nexo-user-id", userId, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+  });
+
+  revalidatePath("/");
+  redirect(returnTo);
+}
 
 function slugify(value: string) {
   return value
@@ -36,7 +66,9 @@ function normalizeClientCode(value: string) {
 }
 
 async function generateClientCode() {
+  const tenantId = await currentTenantId();
   const clients = await prisma.client.findMany({
+    where: { tenantId },
     select: { code: true },
   });
   const usedCodes = new Set(clients.map((client) => normalizeClientCode(client.code)));
@@ -90,6 +122,10 @@ function getAllStringValues(formData: FormData, name: string) {
   return formData.getAll(name).map((value) => String(value).trim());
 }
 
+function checkboxValue(formData: FormData, name: string) {
+  return formData.get(name) === "on" || formData.get(name) === "true" || formData.get(name) === "1";
+}
+
 function revalidateOperations() {
   [
     "/dashboard",
@@ -104,6 +140,10 @@ function revalidateOperations() {
     "/mantenimiento",
     "/reportes",
   ].forEach((route) => revalidatePath(route));
+}
+
+function revalidateConfiguration() {
+  ["/configuracion", "/dashboard", "/viajes", "/chofer"].forEach((route) => revalidatePath(route));
 }
 
 function documentStatusFromDue(due: string) {
@@ -149,6 +189,7 @@ const clientSchema = z.object({
 });
 
 export async function createClientAction(formData: FormData) {
+  const tenantId = await currentTenantId();
   const parsed = clientSchema.parse({
     code: requiredString(formData, "code"),
     name: requiredString(formData, "name"),
@@ -164,6 +205,7 @@ export async function createClientAction(formData: FormData) {
   const code = normalizeClientCode(parsed.code ?? "") || await generateClientCode();
   const requiresTurn = toBoolean(parsed.requiresTurn);
   const clientData = {
+    tenantId,
     code,
     slug,
     name: parsed.name,
@@ -181,6 +223,7 @@ export async function createClientAction(formData: FormData) {
   };
   const existing = await prisma.client.findFirst({
     where: {
+      tenantId,
       OR: [
         { slug },
         { code },
@@ -221,6 +264,284 @@ export async function createClientAction(formData: FormData) {
   redirect("/clientes");
 }
 
+const companySettingsSchema = z.object({
+  name: z.string().min(2),
+  legalName: z.string().min(2),
+  taxId: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().email().or(z.literal("")).optional(),
+  address: z.string().optional(),
+  branchName: z.string().min(2),
+  country: z.string().min(2),
+  currency: z.string().min(2),
+  timezone: z.string().min(2),
+  website: z.string().optional(),
+  primaryColor: z.string().min(4),
+  accentColor: z.string().min(4),
+  backgroundColor: z.string().min(4),
+});
+
+export async function updateCompanySettingsAction(formData: FormData) {
+  await ensureConfigurationDefaults();
+  const tenantId = await currentTenantId();
+
+  const parsed = companySettingsSchema.parse({
+    name: requiredString(formData, "name"),
+    legalName: requiredString(formData, "legalName"),
+    taxId: requiredString(formData, "taxId"),
+    phone: requiredString(formData, "phone"),
+    email: requiredString(formData, "email"),
+    address: requiredString(formData, "address"),
+    branchName: requiredString(formData, "branchName"),
+    country: requiredString(formData, "country"),
+    currency: requiredString(formData, "currency"),
+    timezone: requiredString(formData, "timezone"),
+    website: requiredString(formData, "website"),
+    primaryColor: requiredString(formData, "primaryColor"),
+    accentColor: requiredString(formData, "accentColor"),
+    backgroundColor: requiredString(formData, "backgroundColor"),
+  });
+  const file = formData.get("logo");
+  let logoUrl: string | undefined;
+
+  if (file instanceof File && file.size > 0) {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const ext = path.extname(file.name) || ".png";
+    const fileName = `empresa-logo-${Date.now().toString(36)}${ext.toLowerCase()}`;
+    const uploadDir = path.join(process.cwd(), "public", "uploads", "branding");
+
+    await mkdir(uploadDir, { recursive: true });
+    await writeFile(path.join(uploadDir, fileName), bytes);
+    logoUrl = `/uploads/branding/${fileName}`;
+  }
+
+  await prisma.companySettings.upsert({
+    where: { tenantId },
+    update: {
+      ...parsed,
+      ...(logoUrl ? { logoUrl } : {}),
+    },
+    create: {
+      id: `company-${tenantId}`,
+      tenantId,
+      ...parsed,
+      ...(logoUrl ? { logoUrl } : {}),
+    },
+  });
+
+  await audit("Configurar empresa", "CompanySettings", "default", `Se actualizo la identidad de ${parsed.name}.`, parsed);
+  revalidateConfiguration();
+  redirect("/configuracion#empresa");
+}
+
+const configOptionSchema = z.object({
+  kind: z.string().min(2),
+  label: z.string().min(2),
+  value: z.string().optional(),
+  description: z.string().optional(),
+  color: z.string().min(2),
+  sortOrder: z.coerce.number().int().default(0),
+});
+
+export async function createConfigOptionAction(formData: FormData) {
+  await ensureConfigurationDefaults();
+  const tenantId = await currentTenantId();
+
+  const parsed = configOptionSchema.parse({
+    kind: requiredString(formData, "kind"),
+    label: requiredString(formData, "label"),
+    value: requiredString(formData, "value"),
+    description: requiredString(formData, "description"),
+    color: requiredString(formData, "color") || "slate",
+    sortOrder: requiredString(formData, "sortOrder") || "0",
+  });
+  const value = slugify(parsed.value || parsed.label);
+
+  await prisma.configOption.upsert({
+    where: { kind_value: { kind: parsed.kind, value } },
+    update: {
+      label: parsed.label,
+      tenantId,
+      description: parsed.description ?? "",
+      color: parsed.color,
+      sortOrder: parsed.sortOrder,
+      active: true,
+      requiresDoubleValidation: checkboxValue(formData, "requiresDoubleValidation"),
+      blocksOperation: checkboxValue(formData, "blocksOperation"),
+    },
+    create: {
+      kind: parsed.kind,
+      tenantId,
+      label: parsed.label,
+      value,
+      description: parsed.description ?? "",
+      color: parsed.color,
+      sortOrder: parsed.sortOrder,
+      active: true,
+      requiresDoubleValidation: checkboxValue(formData, "requiresDoubleValidation"),
+      blocksOperation: checkboxValue(formData, "blocksOperation"),
+    },
+  });
+
+  await audit("Configurar opcion", "ConfigOption", value, `Se guardo ${parsed.label} en ${parsed.kind}.`);
+  revalidateConfiguration();
+  redirect(`/configuracion#${parsed.kind}`);
+}
+
+export async function toggleConfigOptionAction(formData: FormData) {
+  const id = requiredString(formData, "id");
+  const kind = requiredString(formData, "kind");
+  const active = checkboxValue(formData, "active");
+
+  if (!id) {
+    throw new Error("Opcion inexistente.");
+  }
+
+  const option = await prisma.configOption.update({
+    where: { id },
+    data: { active },
+  });
+
+  await audit(active ? "Activar opcion" : "Desactivar opcion", "ConfigOption", id, option.label);
+  revalidateConfiguration();
+  redirect(`/configuracion#${kind}`);
+}
+
+const operationalRuleSchema = z.object({
+  code: z.string().min(2),
+  name: z.string().min(2),
+  description: z.string().min(2),
+  appliesTo: z.string().min(2),
+  trigger: z.string().min(2),
+  action: z.string().min(2),
+  severity: z.string().min(2),
+});
+
+export async function createOperationalRuleAction(formData: FormData) {
+  await ensureConfigurationDefaults();
+  const tenantId = await currentTenantId();
+
+  const parsed = operationalRuleSchema.parse({
+    code: requiredString(formData, "code") || `RULE-${Date.now().toString(36).toUpperCase()}`,
+    name: requiredString(formData, "name"),
+    description: requiredString(formData, "description"),
+    appliesTo: requiredString(formData, "appliesTo"),
+    trigger: requiredString(formData, "trigger"),
+    action: requiredString(formData, "action"),
+    severity: requiredString(formData, "severity"),
+  });
+
+  await prisma.operationalRule.upsert({
+    where: { code: parsed.code },
+    update: {
+      ...parsed,
+      tenantId,
+      enabled: checkboxValue(formData, "enabled"),
+      requiresAdmin: checkboxValue(formData, "requiresAdmin"),
+      doubleValidation: checkboxValue(formData, "doubleValidation"),
+    },
+    create: {
+      ...parsed,
+      tenantId,
+      enabled: checkboxValue(formData, "enabled"),
+      requiresAdmin: checkboxValue(formData, "requiresAdmin"),
+      doubleValidation: checkboxValue(formData, "doubleValidation"),
+    },
+  });
+
+  await audit("Configurar regla", "OperationalRule", parsed.code, parsed.name, parsed);
+  revalidateConfiguration();
+  redirect("/configuracion#validaciones");
+}
+
+export async function updateRolePermissionsAction(formData: FormData) {
+  await ensureConfigurationDefaults();
+
+  const roleId = requiredString(formData, "roleId");
+  const permissionKeys = getAllStringValues(formData, "permissionKey");
+
+  if (!roleId) {
+    throw new Error("Rol inexistente.");
+  }
+
+  const permissions = await prisma.permission.findMany({
+    where: { key: { in: permissionKeys } },
+    select: { id: true, key: true },
+  });
+
+  await prisma.rolePermission.deleteMany({ where: { roleId } });
+
+  if (permissions.length > 0) {
+    await prisma.rolePermission.createMany({
+      data: permissions.map((permission) => ({
+        roleId,
+        permissionId: permission.id,
+      })),
+    });
+  }
+
+  const role = await prisma.role.findUnique({ where: { id: roleId } });
+  await audit("Actualizar permisos", "Role", roleId, `Permisos actualizados para ${role?.name ?? roleId}.`, {
+    permissions: permissions.map((permission) => permission.key),
+  });
+
+  revalidateConfiguration();
+  redirect("/configuracion#roles");
+}
+
+const userSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  branch: z.string().min(2),
+  roleId: z.string().min(2),
+  status: z.string().min(2),
+});
+
+export async function createSystemUserAction(formData: FormData) {
+  await ensureConfigurationDefaults();
+  const tenantId = await currentTenantId();
+
+  const parsed = userSchema.parse({
+    name: requiredString(formData, "name"),
+    email: requiredString(formData, "email"),
+    phone: requiredString(formData, "phone"),
+    branch: requiredString(formData, "branch"),
+    roleId: requiredString(formData, "roleId"),
+    status: requiredString(formData, "status"),
+  });
+  const role = await prisma.role.findUnique({ where: { id: parsed.roleId } });
+  const passwordHash = await bcrypt.hash(requiredString(formData, "password") || "nexo1234", 12);
+
+  await prisma.user.upsert({
+    where: { email: parsed.email },
+    update: {
+      name: parsed.name,
+      tenantId,
+      phone: parsed.phone ?? "",
+      branch: parsed.branch,
+      roleId: parsed.roleId,
+      role: role?.slug.toUpperCase() ?? "ADMIN",
+      status: parsed.status,
+    },
+    create: {
+      name: parsed.name,
+      tenantId,
+      email: parsed.email,
+      passwordHash,
+      phone: parsed.phone ?? "",
+      branch: parsed.branch,
+      roleId: parsed.roleId,
+      role: role?.slug.toUpperCase() ?? "ADMIN",
+      status: parsed.status,
+    },
+  });
+
+  await audit("Guardar usuario", "User", parsed.email, `Se guardo el usuario ${parsed.name} con rol ${role?.name ?? "Sin rol"}.`);
+  revalidateConfiguration();
+  redirect("/configuracion#usuarios");
+}
+
 const unitSchema = z.object({
   plate: z.string().min(5),
   type: z.string().min(2),
@@ -233,6 +554,7 @@ const unitSchema = z.object({
 });
 
 export async function createUnitAction(formData: FormData) {
+  const tenantId = await currentTenantId();
   const parsed = unitSchema.parse({
     plate: requiredString(formData, "plate").toUpperCase(),
     type: requiredString(formData, "type"),
@@ -254,6 +576,7 @@ export async function createUnitAction(formData: FormData) {
     where: { plate: parsed.plate },
     update: {
       brand: parsed.brand,
+      tenantId,
       model: parsed.model,
       base: parsed.base,
       km: parsed.km,
@@ -262,6 +585,7 @@ export async function createUnitAction(formData: FormData) {
     },
     create: {
       id,
+      tenantId,
       plate: parsed.plate,
       brand: parsed.brand,
       model: parsed.model,
@@ -290,6 +614,7 @@ const driverSchema = z.object({
 });
 
 export async function createDriverAction(formData: FormData) {
+  const tenantId = await currentTenantId();
   const parsed = driverSchema.parse({
     name: requiredString(formData, "name"),
     dni: requiredString(formData, "dni"),
@@ -307,13 +632,14 @@ export async function createDriverAction(formData: FormData) {
     .map((part) => part[0]?.toUpperCase())
     .join("");
   const unit = parsed.unitPlate && parsed.unitPlate !== "Sin asignar"
-    ? await prisma.unit.findUnique({ where: { plate: parsed.unitPlate } })
+    ? await prisma.unit.findFirst({ where: { plate: parsed.unitPlate, tenantId } })
     : null;
 
   await prisma.driver.upsert({
     where: { slug },
     update: {
       dni: parsed.dni,
+      tenantId,
       phone: parsed.phone,
       category: parsed.category,
       license: parsed.licenseDue ? `Licencia vence ${parsed.licenseDue}` : "Documentación pendiente",
@@ -322,6 +648,7 @@ export async function createDriverAction(formData: FormData) {
     },
     create: {
       id: slug,
+      tenantId,
       slug,
       name: parsed.name,
       initials,
@@ -353,6 +680,7 @@ const orderSchema = z.object({
 });
 
 export async function createOrderAction(formData: FormData) {
+  const tenantId = await currentTenantId();
   const parsed = orderSchema.parse({
     clientName: requiredString(formData, "clientName"),
     reference: requiredString(formData, "reference"),
@@ -368,6 +696,7 @@ export async function createOrderAction(formData: FormData) {
 
   const client = await prisma.client.findFirst({
     where: {
+      tenantId,
       OR: [
         { code: normalizeClientCode(parsed.clientName) },
         { name: parsed.clientName },
@@ -379,13 +708,14 @@ export async function createOrderAction(formData: FormData) {
     throw new Error("Cliente inexistente");
   }
 
-  const count = await prisma.loadOrder.count();
+  const count = await prisma.loadOrder.count({ where: { tenantId } });
   const code = parsed.reference || `OC-${String(count + 1).padStart(6, "0")}`;
   const slug = slugify(code);
 
   await prisma.loadOrder.create({
     data: {
       id: slug,
+      tenantId,
       code,
       slug,
       clientId: client.id,
@@ -411,6 +741,8 @@ const incidentSchema = z.object({
 });
 
 export async function createIncidentAction(formData: FormData) {
+  const tenantId = await currentTenantId();
+  const returnTo = requiredString(formData, "returnTo");
   const parsed = incidentSchema.parse({
     priority: requiredString(formData, "priority"),
     type: requiredString(formData, "type"),
@@ -424,6 +756,7 @@ export async function createIncidentAction(formData: FormData) {
   await prisma.incident.create({
     data: {
       id,
+      tenantId,
       type: parsed.priority,
       title: parsed.title,
       detail: `${parsed.owner} · ${parsed.detail}`,
@@ -434,7 +767,7 @@ export async function createIncidentAction(formData: FormData) {
 
   revalidatePath("/alertas");
   revalidatePath("/dashboard");
-  redirect("/alertas");
+  redirect(returnTo || "/alertas");
 }
 
 const maintenanceSchema = z.object({
@@ -446,6 +779,7 @@ const maintenanceSchema = z.object({
 });
 
 export async function createMaintenanceAction(formData: FormData) {
+  const tenantId = await currentTenantId();
   const parsed = maintenanceSchema.parse({
     unitPlate: requiredString(formData, "unitPlate").split(" · ")[0],
     kind: requiredString(formData, "kind"),
@@ -454,7 +788,7 @@ export async function createMaintenanceAction(formData: FormData) {
     detail: requiredString(formData, "detail"),
   });
 
-  const unit = await prisma.unit.findUnique({ where: { plate: parsed.unitPlate } });
+  const unit = await prisma.unit.findFirst({ where: { plate: parsed.unitPlate, tenantId } });
 
   if (!unit) {
     throw new Error("Unidad inexistente");
@@ -463,6 +797,7 @@ export async function createMaintenanceAction(formData: FormData) {
   await prisma.maintenanceJob.create({
     data: {
       id: `mnt-${unit.id}-${Date.now().toString(36)}`,
+      tenantId,
       unitId: unit.id,
       issue: `${parsed.kind}: ${parsed.detail}`,
       status: parsed.priority === "Crítica" ? "En taller" : "Programado",
@@ -494,6 +829,7 @@ const cashMovementSchema = z.object({
 });
 
 export async function createCashMovementAction(formData: FormData) {
+  const tenantId = await currentTenantId();
   const parsed = cashMovementSchema.parse({
     type: requiredString(formData, "type"),
     category: requiredString(formData, "category"),
@@ -508,7 +844,7 @@ export async function createCashMovementAction(formData: FormData) {
     include: { driver: true, unit: true },
   });
 
-  if (!trip) {
+  if (!trip || trip.tenantId !== tenantId) {
     throw new Error("Viaje inexistente");
   }
 
@@ -517,6 +853,7 @@ export async function createCashMovementAction(formData: FormData) {
   await prisma.cashMovement.create({
     data: {
       id: `mov-${Date.now().toString(36)}`,
+      tenantId,
       date: new Date(`${parsed.date}T00:00:00`),
       type: parsed.type,
       category: parsed.category,
@@ -554,13 +891,14 @@ const tripSchema = z.object({
   alert: z.string().optional(),
 });
 
-async function resolveTripClient(formData: FormData, index: number) {
+async function resolveTripClient(formData: FormData, index: number, tenantId: string) {
   const existingSlug = getAllStringValues(formData, "stopClientSlug")[index];
   const requestedCode = normalizeClientCode(getAllStringValues(formData, "stopClientCode")[index] ?? "");
 
   if (existingSlug) {
     const existing = await prisma.client.findFirst({
       where: {
+        tenantId,
         OR: [
           { slug: existingSlug },
           { id: existingSlug },
@@ -574,7 +912,7 @@ async function resolveTripClient(formData: FormData, index: number) {
   }
 
   if (requestedCode) {
-    const byCode = await prisma.client.findUnique({ where: { code: requestedCode } });
+    const byCode = await prisma.client.findFirst({ where: { code: requestedCode, tenantId } });
 
     if (byCode) {
       return byCode;
@@ -585,6 +923,7 @@ async function resolveTripClient(formData: FormData, index: number) {
 }
 
 export async function createTripAction(formData: FormData) {
+  const tenantId = await currentTenantId();
   const parsed = tripSchema.parse({
     orderSlug: requiredString(formData, "orderSlug"),
     date: requiredString(formData, "date"),
@@ -598,7 +937,7 @@ export async function createTripAction(formData: FormData) {
   });
 
   const order = parsed.orderSlug
-    ? await prisma.loadOrder.findFirst({ where: { slug: parsed.orderSlug }, include: { client: true } })
+    ? await prisma.loadOrder.findFirst({ where: { slug: parsed.orderSlug, tenantId }, include: { client: true } })
     : null;
 
   const stopClientSlugs = getAllStringValues(formData, "stopClientSlug");
@@ -613,7 +952,7 @@ export async function createTripAction(formData: FormData) {
   const stopInitialStatuses = getAllStringValues(formData, "stopInitialStatus");
   const stopCount = Math.max(stopClientCodes.length, stopClientSlugs.length, stopAddresses.length, stopGoods.length, 1);
   const resolvedClients = await Promise.all(
-    Array.from({ length: stopCount }, (_, index) => resolveTripClient(formData, index)),
+    Array.from({ length: stopCount }, (_, index) => resolveTripClient(formData, index, tenantId)),
   );
   const stopClients = resolvedClients.map((client) => client ?? order?.client ?? null);
   const readyStopClients = stopClients.filter((client): client is NonNullable<typeof client> => Boolean(client));
@@ -625,18 +964,19 @@ export async function createTripAction(formData: FormData) {
   const uniqueClientIds = Array.from(new Set(readyStopClients.map((client) => client.id)));
 
   const driver = parsed.driverSlug && parsed.driverSlug !== "sin-asignar"
-    ? await prisma.driver.findUnique({ where: { slug: parsed.driverSlug } })
+    ? await prisma.driver.findFirst({ where: { slug: parsed.driverSlug, tenantId } })
     : null;
   const unit = parsed.unitId && parsed.unitId !== "sin-asignar"
-    ? await prisma.unit.findUnique({ where: { id: parsed.unitId } })
+    ? await prisma.unit.findFirst({ where: { id: parsed.unitId, tenantId } })
     : null;
-  const tripCount = await prisma.trip.count();
+  const tripCount = await prisma.trip.count({ where: { tenantId } });
   const code = `VJ-${String(125 + tripCount).padStart(6, "0")}`;
   const slug = slugify(code);
 
   const trip = await prisma.trip.create({
     data: {
       id: slug,
+      tenantId,
       code,
       slug,
       origin: parsed.origin,
@@ -744,6 +1084,117 @@ export async function createTripAction(formData: FormData) {
   redirect(`/viajes/${trip.slug}`);
 }
 
+export async function requestOperationalConfirmationAction(formData: FormData) {
+  const tenantId = await currentTenantId();
+  const tripSlug = requiredString(formData, "tripSlug");
+  const returnTo = requiredString(formData, "returnTo");
+  const code = requiredString(formData, "code") || "llevar-a-atracar";
+  const label = requiredString(formData, "label") || "Llevar a atracar";
+  const notes = requiredString(formData, "notes");
+  const requestedBy = requiredString(formData, "requestedBy") || "Chofer";
+
+  const trip = await prisma.trip.findFirst({
+    where: { slug: tripSlug, tenantId },
+    include: { timeline: true },
+  });
+
+  if (!trip) {
+    throw new Error("Viaje inexistente.");
+  }
+
+  const pending = await prisma.operationalConfirmation.findFirst({
+    where: {
+      tripId: trip.id,
+      code,
+      status: "Pendiente",
+    },
+  });
+
+  if (!pending) {
+    await prisma.operationalConfirmation.create({
+      data: {
+        tripId: trip.id,
+        code,
+        label,
+        notes,
+        requestedBy,
+        requestedRole: "Chofer",
+      },
+    });
+  }
+
+  await prisma.trip.update({
+    where: { id: trip.id },
+    data: {
+      status: label,
+      alert: `Pendiente confirmacion: ${label}`,
+    },
+  });
+
+  await prisma.tripTimeline.create({
+    data: {
+      tripId: trip.id,
+      order: trip.timeline.length + 1,
+      time: "Ahora",
+      text: `${requestedBy} solicito: ${label}`,
+      state: "active",
+    },
+  });
+
+  await audit("Solicitar confirmacion", "Trip", trip.id, `${trip.code} · ${label}`, { code, notes });
+  revalidateOperations();
+  revalidatePath("/chofer");
+  redirect(returnTo || `/viajes/${trip.slug}`);
+}
+
+export async function confirmOperationalAction(formData: FormData) {
+  const tenantId = await currentTenantId();
+  const confirmationId = requiredString(formData, "confirmationId");
+  const tripSlug = requiredString(formData, "tripSlug");
+  const returnTo = requiredString(formData, "returnTo");
+  const nextStatus = requiredString(formData, "nextStatus") || "Atracado confirmado";
+  const confirmedBy = requiredString(formData, "confirmedBy") || "Administrativo";
+
+  const confirmation = await prisma.operationalConfirmation.update({
+    where: { id: confirmationId },
+    data: {
+      status: "Confirmada",
+      confirmedBy,
+      confirmedRole: "Administrativo",
+      confirmedAt: new Date(),
+    },
+    include: { trip: { include: { timeline: true } } },
+  });
+
+  if (confirmation.trip.tenantId !== tenantId) {
+    throw new Error("Confirmacion fuera de la empresa activa.");
+  }
+
+  await prisma.trip.update({
+    where: { id: confirmation.tripId },
+    data: {
+      status: nextStatus,
+      alert: "Sin alertas",
+    },
+  });
+
+  await prisma.tripTimeline.create({
+    data: {
+      tripId: confirmation.tripId,
+      order: confirmation.trip.timeline.length + 1,
+      time: "Ahora",
+      text: `${confirmedBy} confirmo: ${confirmation.label}`,
+      state: "done",
+    },
+  });
+
+  await audit("Confirmar accion", "OperationalConfirmation", confirmationId, `${confirmation.trip.code} · ${confirmation.label}`);
+  revalidateOperations();
+  revalidatePath("/configuracion");
+  revalidatePath("/chofer");
+  redirect(returnTo || (tripSlug ? `/viajes/${tripSlug}` : "/viajes"));
+}
+
 const documentSchema = z.object({
   category: z.string().min(2),
   name: z.string().min(2),
@@ -755,6 +1206,8 @@ const documentSchema = z.object({
 });
 
 export async function createDocumentAction(formData: FormData) {
+  const tenantId = await currentTenantId();
+  const returnTo = requiredString(formData, "returnTo");
   const parsed = documentSchema.parse({
     category: requiredString(formData, "category"),
     name: requiredString(formData, "name"),
@@ -783,6 +1236,7 @@ export async function createDocumentAction(formData: FormData) {
   await prisma.document.create({
     data: {
       id,
+      tenantId,
       name: parsed.reference ? `${parsed.name} · ${parsed.reference}` : parsed.name,
       owner: parsed.owner,
       association: parsed.association,
@@ -797,6 +1251,7 @@ export async function createDocumentAction(formData: FormData) {
     await prisma.incident.create({
       data: {
         id: `inc-doc-${slugify(parsed.owner)}-${Date.now().toString(36)}`,
+        tenantId,
         type: documentStatusFromDue(parsed.due ?? "") === "Vencido" ? "Alta" : "Media",
         title: `Revisar documento ${parsed.name}`,
         detail: `${parsed.owner} · ${parsed.notes || "Documento cargado con seguimiento administrativo."}`,
@@ -807,14 +1262,21 @@ export async function createDocumentAction(formData: FormData) {
   }
 
   revalidateOperations();
-  redirect("/documentos");
+  redirect(returnTo || "/documentos");
 }
 
 export async function resolveIncidentAction(formData: FormData) {
+  const tenantId = await currentTenantId();
   const id = requiredString(formData, "id");
 
   if (!id) {
     throw new Error("Incidencia inexistente.");
+  }
+
+  const incident = await prisma.incident.findFirst({ where: { id, tenantId } });
+
+  if (!incident) {
+    throw new Error("Incidencia fuera de la empresa activa.");
   }
 
   await prisma.incident.update({
@@ -832,13 +1294,15 @@ export async function resolveIncidentAction(formData: FormData) {
 }
 
 export async function updateTripStopAction(formData: FormData) {
+  const tenantId = await currentTenantId();
   const tripSlug = requiredString(formData, "tripSlug");
+  const returnTo = requiredString(formData, "returnTo");
   const stopNumber = Number(requiredString(formData, "stopNumber"));
   const status = requiredString(formData, "status");
   const returnInfo = requiredString(formData, "returnInfo");
 
-  const trip = await prisma.trip.findUnique({
-    where: { slug: tripSlug },
+  const trip = await prisma.trip.findFirst({
+    where: { slug: tripSlug, tenantId },
     include: { timeline: true },
   });
 
@@ -885,7 +1349,7 @@ export async function updateTripStopAction(formData: FormData) {
 
   revalidateOperations();
   revalidatePath(`/viajes/${trip.slug}`);
-  redirect(`/viajes/${trip.slug}`);
+  redirect(returnTo || `/viajes/${trip.slug}`);
 }
 
 type ImportRow = Record<string, string>;
@@ -1026,6 +1490,7 @@ function splitDelimitedLine(line: string, delimiter: string) {
 }
 
 async function findOrCreateImportClient(row: ImportRow) {
+  const tenantId = await currentTenantId();
   const name = pick(row, ["cliente", "nombre", "razon social", "razón social", "empresa"]);
 
   if (!name) {
@@ -1037,6 +1502,7 @@ async function findOrCreateImportClient(row: ImportRow) {
   const requiresTurn = toBoolean(pick(row, ["requiere turno", "turno", "requiereTurno"]));
   const existing = await prisma.client.findFirst({
     where: {
+      tenantId,
       OR: [
         { code },
         { slug },
@@ -1045,6 +1511,7 @@ async function findOrCreateImportClient(row: ImportRow) {
     },
   });
   const data = {
+    tenantId,
     code,
     slug,
     name,
@@ -1108,6 +1575,7 @@ async function importClients(rows: ImportRow[]) {
 }
 
 async function importUnits(rows: ImportRow[]) {
+  const tenantId = await currentTenantId();
   let imported = 0;
 
   for (const row of rows) {
@@ -1123,6 +1591,7 @@ async function importUnits(rows: ImportRow[]) {
       where: { plate },
       update: {
         brand: pick(row, ["marca", "brand"]) || "Sin marca",
+        tenantId,
         model: pick(row, ["modelo", "model"]) || "Sin modelo",
         base: pick(row, ["base", "sucursal"]) || "Paraná",
         status: pick(row, ["estado", "status"]) || "Operativa",
@@ -1134,6 +1603,7 @@ async function importUnits(rows: ImportRow[]) {
       },
       create: {
         id,
+        tenantId,
         plate,
         brand: pick(row, ["marca", "brand"]) || "Sin marca",
         model: pick(row, ["modelo", "model"]) || "Sin modelo",
@@ -1154,6 +1624,7 @@ async function importUnits(rows: ImportRow[]) {
 }
 
 async function importDrivers(rows: ImportRow[]) {
+  const tenantId = await currentTenantId();
   let imported = 0;
 
   for (const row of rows) {
@@ -1172,10 +1643,11 @@ async function importDrivers(rows: ImportRow[]) {
       .map((part) => part[0]?.toUpperCase())
       .join("");
     const unitPlate = pick(row, ["unidad", "patente", "dominio"]).toUpperCase();
-    const unit = unitPlate ? await prisma.unit.findUnique({ where: { plate: unitPlate } }) : null;
+    const unit = unitPlate ? await prisma.unit.findFirst({ where: { plate: unitPlate, tenantId } }) : null;
     const license = pick(row, ["licencia", "vencimiento licencia", "documentacion", "documentación"]) || "Documentación pendiente";
     const existing = await prisma.driver.findFirst({
       where: {
+        tenantId,
         OR: [
           { slug },
           { dni },
@@ -1184,6 +1656,7 @@ async function importDrivers(rows: ImportRow[]) {
     });
     const data = {
       slug,
+      tenantId,
       name,
       initials,
       dni,
@@ -1217,6 +1690,7 @@ async function importDrivers(rows: ImportRow[]) {
 }
 
 async function importOrders(rows: ImportRow[]) {
+  const tenantId = await currentTenantId();
   let imported = 0;
 
   for (const row of rows) {
@@ -1224,14 +1698,14 @@ async function importOrders(rows: ImportRow[]) {
     const clientCode = normalizeClientCode(pick(row, ["codigo cliente", "código cliente", "cliente codigo", "cliente código"]));
     const clientName = pick(row, ["cliente", "nombre cliente"]);
     const client = clientCode
-      ? await prisma.client.findUnique({ where: { code: clientCode } })
-      : await prisma.client.findFirst({ where: { name: clientName } });
+      ? await prisma.client.findFirst({ where: { code: clientCode, tenantId } })
+      : await prisma.client.findFirst({ where: { name: clientName, tenantId } });
 
     if (!load || !client) {
       continue;
     }
 
-    const count = await prisma.loadOrder.count();
+    const count = await prisma.loadOrder.count({ where: { tenantId } });
     const code = pick(row, ["codigo", "código", "orden", "oc"]) || `OC-${String(count + 1).padStart(6, "0")}`;
     const slug = slugify(code);
 
@@ -1239,6 +1713,7 @@ async function importOrders(rows: ImportRow[]) {
       where: { code },
       update: {
         clientId: client.id,
+        tenantId,
         load,
         origin: pick(row, ["origen", "origin"]) || "A confirmar",
         destination: pick(row, ["destino", "destination"]) || "A confirmar",
@@ -1248,6 +1723,7 @@ async function importOrders(rows: ImportRow[]) {
       },
       create: {
         id: slug,
+        tenantId,
         code,
         slug,
         clientId: client.id,
